@@ -1,0 +1,47 @@
+{% extends "main/base.html" %}
+{% block title %}<title>MEHDIE::UsingAPI</title>{% endblock %}
+
+{% block content %}
+{% load static %}
+
+<div class="container">
+    
+  <!--<div class="d-flex justify-content-center mt-3">-->
+  <div class="d-flex mt-3 ml-5">
+    <div>
+      <h5 class="mb-3">Questions, bug reports, feature requests, support requests and comments all welcome!</h5>
+      <p></p> 
+      <form method="post">
+        {% csrf_token %}
+        <table id="contact_form">
+          <tr><td>Name</td><td>{{ form.name }}</td></tr>
+          <tr><td>Email</td><td>{{ form.from_email }}</td></tr>
+          <tr><td>Subject</td><td>{{ form.subject }}</td></tr>
+          <tr><td>Message</td><td>{{ form.message }}</td></tr>
+        </table>
+        <!--username: {{ form.username }}-->
+        <p>Please type characters in this image 
+          <!-- <span class="ml-2">{{ form.captcha }} <a class="captcha smaller" href="#">refresh</a></span> -->
+        </p>
+        {% if user.is_authenticated %}
+        <input type="hidden" name="username" value='{{ user.username }}'>
+        {% else %}
+        <input type="hidden" name="username" value='Guest user'>
+        {% endif %}
+        <div class="form-actions mt-2">
+          <button class="submit-btn btn btn-primary" type="submit">Send</button>
+          <span class="ml-2"><a href="javascript:history.back()">Cancel</a></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script type="text/javascript">
+//   $('.captcha').click(function () {
+//     $.getJSON("/captcha/refresh/", function (result) {
+//         $('.captcha').attr('src', result['image_url']);
+//         $('#id_captcha_0').val(result['key'])
+//     });
+// });
+</script>
+{% endblock %}

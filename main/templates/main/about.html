@@ -1,0 +1,28 @@
+{% extends "main/base.html" %}
+{% block title %}<title>MEHDIE::About</title>{% endblock %}
+
+{% block content %}
+{% load static %}
+
+  <div class="container">
+    <div class="d-flex justify-content-center mt-3">
+      <h3>The MEHDIE Data Integration System</h3>
+    </div>
+    <div id="contrib_content" class="px-5">
+      <h5>Project Vision</h5>
+      <p>This site is our work-in-progress implementation of the MEHDIE vision for data-driven research by humanities scholars. The site is based upon the World Historical Gazetteer platform. Here, we focus on the middle east and its language and sources, adding two substantial tools to the basic tools provided by the WHG website:.</p>
+      <p>
+        <ul>
+          <li>
+          An entity resolution system that attempts to create relations between entities (people, places, events) from different data sources.
+          </li>
+          <li>
+          A data-driven query system that allows researchers to answer complex questions on the combined data.
+          </li>
+        <ul>
+      </p>
+      
+      <img src="{% static 'images/temporal-depth.jpg'%}" align="center"/>
+    </div>
+  </div>
+{% endblock %}
