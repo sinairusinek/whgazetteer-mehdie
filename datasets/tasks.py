@@ -275,7 +275,7 @@ def task_emailer(tid, dslabel, username, email, counthit, totalhits):
     [email],
     connection=conn
   )
-  msg.bcc = ['karl@kgeographer.org']
+  msg.bcc = ['mehdie.org@gmail.com']
   msg.attach_alternative(html_content_success if task and task.status == 'SUCCESS' else html_content_fail, "text/html")
   msg.send(fail_silently=False)
 
@@ -999,6 +999,7 @@ def es_lookup_wdlocal(qobj, *args, **kwargs):
   # /\/\/\/\/\/
   try:
     res0 = es.search(index="wd", body = q0)
+    print('kalifa')
     hits0 = res0['hits']['hits']
   except:
     print('pid; pass0 error:', qobj, sys.exc_info())

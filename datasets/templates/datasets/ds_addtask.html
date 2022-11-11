@@ -124,8 +124,10 @@
                   </p>
                   <p>
                     <select id="select_region" name="region" class="custom-select-sm" style="width:auto;">
-                      <option value="0">Select pre-defined region</option>
+                      <option value="0" selected="selected">Select Pre-defined regions</option>
                       <option disabled>___________</option>
+                      <option value="1">The Middle East</option>
+                      {% comment %} <option></option> {% endcomment %}
                       {% for r in region_list %}
                         <option value="{{ r.id }}">{{ r.title }}</option>
                       {% endfor %}
@@ -142,6 +144,65 @@
                   <span class="ml-2 small">
                     <a href="{% url 'areas:area-create' %}?next=/datasets/{{ds.id}}/addtask">create user area</a>
                   </span></p>
+                </div>
+              </div>
+            </div>
+            <hr/>
+            {# MatchData #}
+            <div class="form-check">
+              <label class="form-check-label" for="match_data">
+                <input type="radio" class="form-check-input r_wd" id="match_data"
+                  name="recon" value="match_data" checked>Match Datasets</span>
+              </label>
+              {% comment %} {% if msg_wdlocal %} {% endcomment %}
+                <div id="wdlocal_tasks" class="smaller">
+                  <div class="mt-0 smaller radiodiv">
+                  {% comment %} {{ msg_wdlocal.msg|safe }} {% endcomment %}
+                  {% comment %} {% if msg_wdlocal.type == 'inprogress' %} {% endcomment %}
+                  {% comment %} <label class="mb-0"><input type="radio" name="prior"  value="keep" id="r_keep_wd"> keep prior match results</label>
+                  <label class="mb-0"><input type="radio" name="prior" value="zap"> delete prior match results</label>
+                  {% endif %} {% endcomment %}
+                  </div>
+                </div>
+              {% comment %} {% endif %} {% endcomment %}
+            </div>
+            <div id="addtask_lower">
+              <div id="geo_constraint" class="mt-2">
+                <hr/>
+                <div class="mb-2">
+                  <p class="font-weight-bold">match with one of my datasets{% fontawesome_icon 'question-circle' color='#993333' %}
+                  </p>
+                  <p>
+                    <select id="select_m_dataset" name="m_dataset" class="custom-select-sm" style="width:auto;">
+                      <option value="0" selected="selected">Select from the List of your datasets</option>
+                      <option disabled>___________</option>
+                      
+                      {% comment %} <option></option> {% endcomment %}
+                      {% for dataset in my_dataset %}
+                        <option value="{{ dataset.id }}">{{ dataset.title }}</option>
+                      {% endfor %}
+                    </select><span class="ml-2"><b>or...</b></span></p>
+                  <p>
+                </div>
+              </div>
+            </div>
+            <div id="addtask_lower">
+              <div id="geo_constraint" class="mt-2">
+                <hr/>
+                <div class="mb-2">
+                  <p class="font-weight-bold">match with a public dataset{% fontawesome_icon 'question-circle' color='#993333' %}
+                  </p>
+                  <p>
+                    <select id="select_p_dataset" name="p_dataset" class="custom-select-sm" style="width:auto;">
+                      <option value="0" selected="selected">Select from the List Public datasets</option>
+                      <option disabled>___________</option>
+                      
+                      {% comment %} <option></option> {% endcomment %}
+                      {% for dataset in my_dataset %}
+                        <option value="{{ dataset.id }}">{{ dataset.title }}</option>
+                      {% endfor %}
+                    </select><span class="ml-2"><b>or...</b></span></p>
+                  <p>
                 </div>
               </div>
             </div>

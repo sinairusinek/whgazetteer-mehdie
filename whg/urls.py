@@ -44,7 +44,7 @@ urlpatterns = [
     # static content
     path('about/', TemplateView.as_view(template_name="main/about.html"), name="about"),
     path('contributing/', TemplateView.as_view(template_name="main/contributing.html"), name="contributing"),
-    path('credits/', TemplateView.as_view(template_name="main/credits.html"), name="credits"),
+    # path('credits/', TemplateView.as_view(template_name="main/credits.html"), name="credits"),
     path('licensing/', TemplateView.as_view(template_name="main/licensing.html"), name="licensing"),
     path('system/', TemplateView.as_view(template_name="main/system.html"), name="system"),
     path('usingapi/', TemplateView.as_view(template_name="main/usingapi.html"), name="usingapi"),

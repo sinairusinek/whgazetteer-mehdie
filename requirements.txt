@@ -20,7 +20,7 @@ djangorestframework
 djangorestframework-datatables
 djangorestframework-gis
 elasticsearch==7.8.1
-frictionless
+frictionless==3.31.0
 geojson
 goodtables
 openpyxl

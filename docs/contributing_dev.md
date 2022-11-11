@@ -1,6 +1,6 @@
 ## Contributing to MEHDIE: software and data development
 
-MEHDIE is an open-source software  project and welcomes collaborators in its ongoing development. Technical Director Karl Grossner (@kgeographer) has been sole developer until now but he and the WHG project team are now actively inviting contributions in both **software development** and **data development**. If any of the following is of interest, please do not hesitate to get in touch  (karl@kgeographer.org)!
+MEHDIE is an open-source software  project and welcomes collaborators in its ongoing development. Technical Director Karl Grossner (@kgeographer) has been sole developer until now but he and the WHG project team are now actively inviting contributions in both **software development** and **data development**. If any of the following is of interest, please do not hesitate to get in touch  (mehdie.org@gmail.com)!
 
 Specifics for individual work items will be appearing soon as GitHub issues, making it easier to find something that fits with developers'  availability and skills. 
 

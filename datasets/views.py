@@ -1,4 +1,5 @@
 # datasets.views
+# NB!!! some imports greyed out but ARE USED!
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -7,12 +8,12 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.db.utils import DataError
 from django.forms import modelformset_factory
 from django.http import HttpResponseServerError, HttpResponseRedirect, JsonResponse, HttpResponse
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.views.generic import (CreateView, ListView, UpdateView, DeleteView, DetailView)
-# NB!!! shows as unused but IT IS USED!
 from django_celery_results.models import TaskResult
 
 
@@ -51,8 +52,8 @@ from resources.models import Resource
 
 
 """
-  email a Celery down notice
-  to ['whgazetteer@gmail.com','karl@kgeographer.org'],
+  email various, incl. Celery down notice
+  to ['whgazetteer@gmail.com','mehdie.org@gmail.com'],
 """
 def emailer(subj, msg, from_addr, to_addr):
   print('subj, msg, from_addr, to_addr',subj, msg, from_addr, to_addr)
@@ -289,12 +290,11 @@ def indexMultiMatch(pid, matchlist):
     if len(addkids) > 0:
       for kid in addkids:
         q_adopt = {"script": {
-          "source": "ctx._source.relation.parent = params.new_parent); ",
+          "source": "ctx._source.relation.parent = params.new_parent; ",
           "lang": "painless",
-          "params": {
-            "new_parent": winner['whg_id']
-          }
-        }, "query": {"match": {"place_id": kid}}}
+          "params": {"new_parent": winner['whg_id']}
+          },
+          "query": {"match": {"place_id": kid}}}
         es.update_by_query(index=idx, body=q_adopt, conflicts='proceed')
 
 """ 
@@ -312,11 +312,10 @@ def review(request, pk, tid, passnum):
     if auth == 'tgn' else 'WHG'
   kwargs=json.loads(task.task_kwargs.replace("'",'"'))
   beta = 'beta' in list(request.user.groups.all().values_list('name',flat=True))
-
   # filter place records by passnum for those with unreviewed hits on this task
   # if request passnum is complete, increment
   cnt_pass = Hit.objects.values('place_id').filter(task_id=tid, reviewed=False, query_pass=passnum).count()
-
+  print('in review()', {'auth':auth, 'ds':ds,'task': task})
   # TODO: refactor this awful mess; controls whether PASS appears in review dropdown
   cnt_pass0 = Hit.objects.values('place_id').filter(
     task_id=tid, reviewed=False, query_pass='pass0').count()
@@ -360,7 +359,7 @@ def review(request, pk, tid, passnum):
   """
   status = [2] if passnum == 'def' else [0]
 
-  # place objects from place_ids (a single pass or all)
+  # unreviewed place objects from place_ids (a single pass or all)
   record_list = ds.places.order_by('id').filter(**{lookup: status}, pk__in=hitplaces)
 
   # no records left for pass (or in deferred queue)
@@ -373,9 +372,9 @@ def review(request, pk, tid, passnum):
     }
     return render(request, 'datasets/'+review_page, context=context)
 
-  # TODO: test concurrent reviewers scenario
   # manage pagination & urls
   # gets next place record as records[0]
+  # TODO: manage concurrent reviewers; i.e. 2 people have same page 1
   paginator = Paginator(record_list, 1)
 
   # handle request for singleton (e.g. deferred from browse table)
@@ -400,8 +399,10 @@ def review(request, pk, tid, passnum):
     raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid, query_pass=passnum).order_by('-score')
   else:
     # accessioning -> get all regardless of pass
+    # raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid).order_by('-score')
     raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid).order_by('-score')
 
+  # print('raw_hits', [h.json['titles'] for h in raw_hits])
   # ??why? get pass contents for all of a place's hits
   passes = list(set([item for sublist in [[s['pass'] for s in h.json['sources']] for h in raw_hits]
                      for item in sublist])) if auth in ['whg','idx'] else None
@@ -433,6 +434,7 @@ def review(request, pk, tid, passnum):
     'deferred': True if passnum =='def' else False,
   }
 
+  # print('raw_hits at formset', [h.json['titles'] for h in raw_hits])
   # build formset from hits, add to context
   HitFormset = modelformset_factory(
     Hit,
@@ -449,10 +451,17 @@ def review(request, pk, tid, passnum):
     # process match/no match choices made by save in review or accession page
     # NB very different cases.
     #   For wikidata review, act on each hit considered (new place_geom and place_link records if matched)
-    #   For accession,
+    #   For accession, act on index 'clusters'
     place_post = get_object_or_404(Place,pk=request.POST['place_id'])
-    if formset.is_valid():
+    review_status = getattr(place_post, review_field)
+    # proceed with POST only if place is unreviewed or deferred; else return to a GET (and next place)
+    # NB. other reviewer(s) *not* notified
+    if review_status == 1:
+      context["already"] = True
+      return redirect('/datasets/'+str(pk)+'/review/'+task.task_id+'/'+passnum)
+    elif formset.is_valid():
       hits = formset.cleaned_data
+      # print('formset valid', hits)
       matches = 0
       matched_for_idx = [] # for accession
       # are any of the listed hits matches?
@@ -460,14 +469,14 @@ def review(request, pk, tid, passnum):
         hit = hits[x]['id']
         # is this hit a match?
         if hits[x]['match'] not in ['none']:
-          print('json of matched hit/cluster (in review())', hits[x]['json'])
+          # print('json of matched hit/cluster (in review())', hits[x]['json'])
           matches += 1
           # if wd or tgn, write place_geom, place_link record(s) now
           # IF someone didn't just review it!
           if task.task_name[6:] in ['wdlocal','wd','tgn']:
             #print('task.task_name', task.task_name)
             hasGeom = 'geoms' in hits[x]['json'] and len(hits[x]['json']['geoms']) > 0
-            # only if 'accept geometries' was checked
+            # create place_geom records if 'accept geometries' was checked
             if kwargs['aug_geom'] == 'on' and hasGeom \
                and tid not in place_post.geoms.all().values_list('task_id',flat=True):
               gtype = hits[x]['json']['geoms'][0]['type']
@@ -487,7 +496,7 @@ def review(request, pk, tid, passnum):
               )
 
             # create single PlaceLink for matched authority record
-            # IF someone didn't just do it for this record
+            # TODO: this if: condition handled already?
             if tid not in place_post.links.all().values_list('task_id',flat=True):
               link = PlaceLink.objects.create(
                 place = place_post,
@@ -532,9 +541,9 @@ def review(request, pk, tid, passnum):
                             'pid':hits[x]['json']['pid'],
                             'score':hits[x]['json']['score'],
                             'links': links_count})
-          # TODO: (?) informational lookup on whg index
-          elif task.task_name == 'align_whg':
-            print('align_whg (non-accessioning) DOING NOTHING (YET)')
+          # TODO: informational lookup on whg index?
+          # elif task.task_name == 'align_whg':
+          #   print('align_whg (non-accessioning) DOING NOTHING (YET)')
         # in any case, flag hit as reviewed...
         hitobj = get_object_or_404(Hit, id=hit.id)
         hitobj.reviewed = True
@@ -563,7 +572,18 @@ def review(request, pk, tid, passnum):
         setattr(ds, 'ds_status', 'indexed')
         ds.save()
 
-      # set review_whg = 1
+      # if none are left for this task, change status & email staff
+      if auth in ['wd'] and ds.recon_status['wdlocal'] == 0:
+        ds.ds_status = 'wd-complete'
+        ds.save()
+        status_emailer(ds, 'wd')
+        print('sent status email')
+      elif auth == 'idx' and ds.recon_status['idx'] == 0:
+        ds.ds_status = 'indexed'
+        ds.save()
+        status_emailer(ds, 'idx')
+        print('sent status email')
+
       print('review_field', review_field)
       setattr(place_post, review_field, 1)
       place_post.save()
@@ -572,9 +592,7 @@ def review(request, pk, tid, passnum):
     else:
       print('formset is NOT valid. errors:',formset.errors)
       print('formset data:',formset.data)
-
-    #
-
+  # print('context', context)
   return render(request, 'datasets/'+review_page, context=context)
 
 """
@@ -684,9 +702,6 @@ def write_wd_pass0(request, tid):
 """
 def ds_recon(request, pk):
   ds = get_object_or_404(Dataset, id=pk)
-  if ds.public == False:
-    messages.add_message(request, messages.ERROR, """Dataset must be public before indexing!""")
-    return redirect('/datasets/' + str(ds.id) + '/addtask')
   # TODO: handle multipolygons from "#area_load" and "#area_draw"
   user = request.user
   context = {"dataset": ds.title}
@@ -697,6 +712,9 @@ def ds_recon(request, pk):
     print('ds_recon() request.POST:',request.POST)
     auth = request.POST['recon']
     language = request.LANGUAGE_CODE
+    if auth == 'idx' and ds.public == False:
+      messages.add_message(request, messages.ERROR, """Dataset must be public before indexing!""")
+      return redirect('/datasets/' + str(ds.id) + '/addtask')
     # previous successful task of this type?
     #   wdlocal? archive previous, scope = unreviewed
     #   idx? scope = unindexed
@@ -735,8 +753,8 @@ def ds_recon(request, pk):
       print('Celery is down :^(')
       emailer('Celery is down :^(',
               'if not celeryUp() -- look into it, bub!',
-              'whgazetteer@gmail.com',
-              ['karl@kgeographer.org'])
+              'whg@kgeographer.org',
+              ['mehdie.org@gmail.com'])
       messages.add_message(request, messages.INFO, """Sorry! WHG reconciliation services appears to be down. 
         The system administrator has been notified.""")
       return redirect('/datasets/'+str(ds.id)+'/reconcile')
@@ -764,8 +782,8 @@ def ds_recon(request, pk):
       messages.add_message(request, messages.INFO, "Sorry! Reconciliation services appear to be down. The system administrator has been notified.<br/>"+ str(sys.exc_info()))
       emailer('WHG recon task failed',
               'a reconciliation task has failed for dataset #'+ds.id+', w/error: \n' +str(sys.exc_info())+'\n\n',
-              'whgazetteer@gmail.com',
-              'karl@kgeographer.org')
+              'whg@kgeographer.org',
+              'mehdie.org@gmail.com')
 
       return redirect('/datasets/'+str(ds.id)+'/reconcile')
 
@@ -1417,6 +1435,7 @@ def ds_insert_lpf(request, pk):
   print('dbcount',dbcount)
 
   if dbcount == 0:
+    errors=[]
     try:
       infile = dsf.file.open(mode="r")
       print('ds_insert_lpf() for dataset',ds)
@@ -1445,6 +1464,7 @@ def ds_insert_lpf(request, pk):
             if geojson:
               # a GeometryCollection
               ccodes = ccodesFromGeom(geojson)
+              print('ccodes', ccodes)
             else:
               ccodes = []
           else:
@@ -1456,17 +1476,21 @@ def ds_insert_lpf(request, pk):
           datesobj=parsedates_lpf(feat)
 
           # TODO: compute fclasses
-          newpl = Place(
-            # strip uribase from @id
-            src_id=feat['@id'] if uribase in ['', None] else feat['@id'].replace(uribase,''),
-            dataset=ds,
-            title=title,
-            ccodes=ccodes,
-            minmax = datesobj['minmax'],
-            timespans = datesobj['intervals']
-          )
-          print('new place: ',newpl.title)
-          newpl.save()
+          try:
+            newpl = Place(
+              # strip uribase from @id
+              src_id=feat['@id'] if uribase in ['', None] else feat['@id'].replace(uribase,''),
+              dataset=ds,
+              title=title,
+              ccodes=ccodes,
+              minmax = datesobj['minmax'],
+              timespans = datesobj['intervals']
+            )
+            newpl.save()
+            print('new place: ',newpl.title)
+          except:
+            print('failed id' + title + 'datesobj: '+datesobj)
+            print(sys.exc_info())
 
           # PlaceName: place,src_id,toponym,task_id,
           # jsonb:{toponym, lang, citation[{label, year, @id}], when{timespans, ...}}
@@ -1494,6 +1518,7 @@ def ds_insert_lpf(request, pk):
               else:
                 fc = None
               print('from feat[types]:',t)
+              print('PlaceType record newpl,newpl.src_id,t,fc',newpl,newpl.src_id,t,fc)
               objs['PlaceTypes'].append(PlaceType(
                 place=newpl,
                 src_id=newpl.src_id,
@@ -1508,14 +1533,16 @@ def ds_insert_lpf(request, pk):
             objs['PlaceWhens'].append(PlaceWhen(
               place=newpl,
               src_id=newpl.src_id,
-              jsonb=feat['when']))
+              jsonb=feat['when'],
+              minmax=newpl.minmax
+            ))
 
           # PlaceGeom: place,src_id,task_id,jsonb:{type,coordinates[],when{},geo_wkt,src}
           #if 'geometry' in feat.keys() and feat['geometry']['type']=='GeometryCollection':
           if geojson and geojson['type']=='GeometryCollection':
             #for g in feat['geometry']['geometries']:
             for g in geojson['geometries']:
-              #print('from feat[geometry]:',g)
+              # print('from feat[geometry]:',g)
               objs['PlaceGeoms'].append(PlaceGeom(
                 place=newpl,
                 src_id=newpl.src_id,
@@ -1561,17 +1588,53 @@ def ds_insert_lpf(request, pk):
               objs['PlaceDepictions'].append(PlaceDepiction(
                 place=newpl,src_id=newpl.src_id,jsonb=dep))
 
-          #
+          # throw errors into user message
+          def raiser(model, e):
+            print('Bulk load for '+ model + ' failed on', newpl)
+            errors.append({"field":model, "error":e})
+            print('error', e)
+            raise DataError
+
           # create related objects
-          PlaceName.objects.bulk_create(objs['PlaceNames'])
-          PlaceType.objects.bulk_create(objs['PlaceTypes'])
-          PlaceWhen.objects.bulk_create(objs['PlaceWhens'])
-          PlaceGeom.objects.bulk_create(objs['PlaceGeoms'])
-          PlaceLink.objects.bulk_create(objs['PlaceLinks'])
-          PlaceRelated.objects.bulk_create(objs['PlaceRelated'])
-          PlaceDescription.objects.bulk_create(objs['PlaceDescriptions'])
-          PlaceDepiction.objects.bulk_create(objs['PlaceDepictions'])
-          #print('new place record: ',newpl.src_id)
+          try:
+            PlaceName.objects.bulk_create(objs['PlaceNames'])
+          except DataError as e:
+            raiser('Name', e)
+
+          try:
+            PlaceType.objects.bulk_create(objs['PlaceTypes'])
+          except DataError as de:
+            raiser('Type', e)
+
+          try:
+            PlaceWhen.objects.bulk_create(objs['PlaceWhens'])
+          except DataError as de:
+            raiser('When', e)
+
+          try:
+            PlaceGeom.objects.bulk_create(objs['PlaceGeoms'])
+          except DataError as de:
+            raiser('Geom', e)
+
+          try:
+            PlaceLink.objects.bulk_create(objs['PlaceLinks'])
+          except DataError as de:
+            raiser('Link', e)
+
+          try:
+            PlaceRelated.objects.bulk_create(objs['PlaceRelated'])
+          except DataError as de:
+            raiser('Related', e)
+
+          try:
+            PlaceDescription.objects.bulk_create(objs['PlaceDescriptions'])
+          except DataError as de:
+            raiser('Description', e)
+
+          try:
+            PlaceDepiction.objects.bulk_create(objs['PlaceDepictions'])
+          except DataError as de:
+            raiser('Depiction', e)
 
           # TODO: compute newpl.ccodes (if geom), newpl.fclasses, newpl.minmax
           # something failed in *any* Place creation; delete dataset
@@ -1584,14 +1647,18 @@ def ds_insert_lpf(request, pk):
               "total_links":total_links})
     except:
       # drop the (empty) database
-      ds.delete()
+      # ds.delete()
       # email to user, admin
-      subj = 'MEHDIEerror followup'
-      msg = 'Hello '+ user.username+', \n\nWe see your recent upload for the '+ds.label+' dataset failed, very sorry about that! We will look into why and get back to you within a day.\n\nRegards,\nThe WHG Team'
-      emailer(subj,msg,'admin@whgazetteer@gmail.com',[user.email, 'whgadmin@kgeographer.com'])
+      subj = 'World Historical Gazetteer error followup'
+      msg = 'Hello '+ user.username+', \n\nWe see your recent upload for the '+ds.label+\
+            ' dataset failed, very sorry about that!'+\
+            '\nThe likely cause was: '+str(errors)+'\n\n'+\
+            "If you can, fix the cause. If not, please respond to this email and we will get back to you soon.\n\nRegards,\nThe WHG Team"
+      emailer(subj,msg,'whg@kgeographer.org',[user.email, 'whgadmin@kgeographer.com'])
 
       # return message to 500.html
-      messages.error(request, "Database insert failed, but we don't know why. The WHG team has been notified and will follow up by email to <b>"+user.username+'</b> ('+user.email+')')
+      # messages.error(request, "Database insert failed, but we don't know why. The WHG team has been notified and will follow up by email to <b>"+user.username+'</b> ('+user.email+')')
+      # return redirect(request.GET.get('from'))
       return HttpResponseServerError()
 
   else:
@@ -1606,6 +1673,7 @@ def ds_insert_lpf(request, pk):
   if insert fails anywhere, delete dataset + any related objects
 """
 def ds_insert_tsv(request, pk):
+  print('test')
   import csv, re
   csv.field_size_limit(300000)
   ds = get_object_or_404(Dataset, id=pk)
@@ -1625,7 +1693,7 @@ def ds_insert_tsv(request, pk):
 
       infile.seek(0)
       header = next(reader, None)
-      header = [col.lower() for col in header]
+      header = [col.lower().strip() for col in header]
       print('header.lower()',[col.lower() for col in header])
 
       # strip BOM character if exists
@@ -1641,6 +1709,7 @@ def ds_insert_tsv(request, pk):
       total_links = 0
       for r in reader:
         # build attributes for new Place instance
+        print(1)
         src_id = r[header.index('id')]
         title = r[header.index('title')].replace("' ","'") # why?
         # strip anything in parens for title only
@@ -1705,11 +1774,12 @@ def ds_insert_tsv(request, pk):
         )
         newpl.save()
         countrows += 1
-
+        print(2)
         # build associated objects and add to arrays #
         #
         # PlaceName(); title, then variants
         #
+        print(objs['PlaceName'])
         objs['PlaceName'].append(
           PlaceName(
             place=newpl,
@@ -1717,6 +1787,7 @@ def ds_insert_tsv(request, pk):
             toponym = title,
             jsonb={"toponym": title, "citations": [{"id":title_uri,"label":title_source}]}
         ))
+
         # variants if any; assume same source as title toponym
         if len(variants) > 0:
           for v in variants:
@@ -1738,12 +1809,14 @@ def ds_insert_tsv(request, pk):
 
                 objs['PlaceName'].append(new_name)
             except:
+              print(3)
               print('error on variant', sys.exc_info())
               print('error on variant for newpl.id', newpl.id, v)
 
         #
         # PlaceType()
         #
+        print('3 coold')
         if len(types) > 0:
           fclass_list=[]
           for i,t in enumerate(types):
@@ -1759,13 +1832,13 @@ def ds_insert_tsv(request, pk):
                         "label":aat_lookup(int(aatnum[4:])) if aatnum else ''
                       }
             ))
-        # add fclasses to new Place
           newpl.fclasses = fclass_list
           newpl.save()
 
         #
         # PlaceGeom()
         #
+        print(3)
         if geojson:
           objs['PlaceGeom'].append(
             PlaceGeom(
@@ -1829,16 +1902,23 @@ def ds_insert_tsv(request, pk):
               }
             ))
 
-
+      print(4)
       # bulk_create(Class, batch_size=n) for each
+      print(objs)
       PlaceName.objects.bulk_create(objs['PlaceName'],batch_size=10000)
+      print(7)
       PlaceType.objects.bulk_create(objs['PlaceType'],batch_size=10000)
+      print(8)
       PlaceGeom.objects.bulk_create(objs['PlaceGeom'],batch_size=10000)
+      print(9)
       PlaceLink.objects.bulk_create(objs['PlaceLink'],batch_size=10000)
+      print(10)
       PlaceRelated.objects.bulk_create(objs['PlaceRelated'],batch_size=10000)
-      PlaceWhen.objects.bulk_create(objs['PlaceWhen'],batch_size=10000)
-      PlaceDescription.objects.bulk_create(objs['PlaceDescription'],batch_size=10000)
-
+      print(11)
+      # PlaceWhen.objects.bulk_create(objs['PlaceWhen'],batch_size=10000)
+      print(12)
+      # PlaceDescription.objects.bulk_create(objs['PlaceDescription'],batch_size=10000)
+      print(13)
       infile.close()
 
       print('rows,linked,links:', countrows, countlinked, total_links)
@@ -1847,9 +1927,9 @@ def ds_insert_tsv(request, pk):
       # drop the (empty) dataset if insert wasn't complete
       ds.delete()
       # email to user, admin
-      subj = 'MEHDIEerror followup'
+      subj = 'World Historical Gazetteer error followup'
       msg = 'Hello '+ user.username+', \n\nWe see your recent upload for the '+ds.label+' dataset failed, very sorry about that! We will look into why and get back to you within a day.\n\nRegards,\nThe WHG Team'
-      emailer(subj,msg,'whgazetteer@gmail.com',[user.email, 'karl@kgeographer.org'])
+      emailer(subj,msg,'whg@kgeographer.org',[user.email, 'mehdie.org@gmail.com'])
 
       # return message to 500.html
       messages.error(request, "Database insert failed, but we don't know why. The WHG team has been notified and will follow up by email to <b>"+user.username+'</b> ('+user.email+')')
@@ -1896,10 +1976,10 @@ class DataListsView(LoginRequiredMixin, ListView):
     print('DataListsView() whgteam:' + str(whgteam) + ', teaching: ' + str(teaching))
 
     if self.request.path == reverse('data-datasets'):
-      list = Dataset.objects.all().order_by('-create_date') if whgteam \
-        else Dataset.objects.filter( Q(owner=me) ).order_by('-id')
-      # print('list:', list)
-      return list
+      idlist = [obj.id for obj in Dataset.objects.all() if me in obj.owners or
+                   me in obj.collaborators or me.is_superuser]
+      dslist = Dataset.objects.filter(id__in=idlist).order_by('-create_date')
+      return dslist
     elif self.request.path == reverse('data-collections'):
       list = Collection.objects.all().order_by('created') if whgteam \
         else Collection.objects.filter(owner=me).order_by('created')
@@ -1960,11 +2040,12 @@ class PublicListsView(ListView):
     return context
 
 def failed_upload_notification(user, tempfn):
-    subj = 'MEHDIEerror followup'
+    subj = 'World Historical Gazetteer error followup'
     msg = 'Hello ' + user.username + \
-        ', \n\nWe see your recent upload failed -- very sorry about that! We will look into why and get back to you within a day.\n\nRegards,\nThe WHG Team\n\n\n['+tempfn+']'
-    emailer(subj, msg, 'whgazetteer@gmail.com',
-            ['mehdie.org@gmail.com'])
+      ', \n\nWe see your recent upload failed -- very sorry about that!' + \
+      'We will look into why and get back to you within a day.\n\nRegards,\nThe WHG Team\n\n\n['+tempfn+']'
+    emailer(subj, msg, 'whg@kgeographer.org',
+            [user.email, 'mehdie.org@gmail.com'])
 
 """
   DatasetCreateView()
@@ -1987,7 +2068,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
   def form_valid(self, form):
     data=form.cleaned_data
-    print('data from create form', data)
     context={"format":data['format']}
     user=self.request.user
     file=self.request.FILES['file']
@@ -1995,7 +2075,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
     mimetype = file.content_type
 
     newfn, newtempfn = ['', '']
-    print('form_valid() mimetype',mimetype)
+    print('form_valid() mimetype', mimetype)
 
 
     # open & write tempf to a temp location;
@@ -2034,31 +2114,33 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
     # if encoding and encoding.lower().startswith('utf-8'):
     ext = mthash_plus.mimetypes[mimetype]
     print('DatasetCreateView() extension', ext)
+    fail_msg = "A database insert failed and we aren't sure why. The WHG team has been notified "+\
+               "and will follow up by email to <b>"+user.username+"</b> ("+user.email+")"
+
+    # this validates per row and always gets a result, even if errors
     if ext == 'json':
       try:
         result = validate_lpf(tempfn, 'coll')
       except:
-        # subj = 'MEHDIEerror followup'
-        # msg = 'Hello '+ user.username+', \n\nWe see your recent upload failed -- very sorry about that! We will look into why and get back to you within a day.\n\nRegards,\nThe WHG Team\n\n\n['+tempfn+']'
-        # emailer(subj,msg,'whgazetteer@gmail.com',[user.email, 'karl@kgeographer.org'])
-
         # email to user, admin
         failed_upload_notification(user, tempfn)
         # return message to 500.html
-        messages.error(self.request, "Database insert failed and we aren't sure why. The WHG team has been notified and will follow up by email to <b>"+user.username+'</b> ('+user.email+')')
+        messages.error(self.request, fail_msg)
         return HttpResponseServerError()
 
+    # for delimited, fvalidate() is performed on the entire file
+    # on fail, raises server error
     elif ext in ['csv', 'tsv']:
       try:
         # fvalidate() wants an extension
         newfn = tempfn+'.'+ext
         os.rename(tempfn, newfn)
         result = validate_tsv(newfn, ext)
+        print('tsv result', result)
       except:
         # email to user, admin
         failed_upload_notification(user, tempfn)
-        messages.error(self.request, "Database insert failed and we aren't sure why. The WHG team has been notified and will follow up by email to <b>" +
-                       user.username+'</b> ('+user.email+')')
+        messages.error(self.request, fail_msg)
         return HttpResponseServerError()
 
     elif ext in ['xlsx', 'ods']:
@@ -2091,7 +2173,8 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
       except:
         # email to user, admin
         failed_upload_notification(user, newfn)
-        messages.error(self.request, "Database insert failed and we aren't sure why. The WHG team has been notified and will follow up by email to <b>" +
+        messages.error(self.request, "Database insert failed and we aren't sure why. "+
+                       "The WHG team has been notified and will follow up by email to <b>" +
                        user.username+'</b> ('+user.email+')')
         return HttpResponseServerError()
 
@@ -2112,7 +2195,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
       dsobj.numrows = result['count']
       clean_label=form.cleaned_data['label'].replace(' ','_')
       if not form.cleaned_data['uri_base']:
-        dsobj.uri_base = 'https://whgazetteer.org/places/'+form.cleaned_data['label']+'/'
+        dsobj.uri_base = 'https://whgazetteer.org/api/db/?id='
 
       # links will be counted later on insert
       dsobj.numlinked = 0
@@ -2379,12 +2462,12 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
         result = ds_insert_lpf(self.request, id_)
         print('lpf result',result)
       print('ds_insert_xxx() result',result)
-      ds.numrows = result['numrows']
-      ds.numlinked = result['numlinked']
-      ds.total_links = result['total_links']
+      ds.numrows = result.get('numrows')
+      ds.numlinked = result.get('numlinked')
+      ds.total_links = result.get('total_links')
       ds.ds_status = 'uploaded'
       file.df_status = 'uploaded'
-      file.numrows = result['numrows']
+      file.numrows = result.get('numrows')
       ds.save()
       file.save()
 
@@ -2537,10 +2620,6 @@ class DatasetReconcileView(LoginRequiredMixin, DetailView):
     ds_tasks = ds.tasks.filter(status='SUCCESS')
 
     context['ds'] = ds
-    context['log'] = ds.log.filter(category='dataset').order_by('-timestamp')
-    context['comments'] = Comment.objects.filter(place_id__dataset=ds).order_by('-created')
-    context['collaborators'] = ds.collaborators.all()
-    context['owners'] = ds.owners
     context['tasks'] = ds_tasks
 
     context['beta_or_better'] = True if self.request.user.groups.filter(name__in=['beta', 'admins']).exists() else False
@@ -2628,6 +2707,9 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
     # pre-defined UN regions
     predefined = Area.objects.all().filter(type='predefined').values('id','title')
 
+    my_dataset = Dataset.objects.filter(owner=self.request.user)
+    
+
     gothits={}
     for t in ds.tasks.filter(status='SUCCESS'):
       gothits[t.task_id] = int(json.loads(t.result)['got_hits'])
@@ -2673,6 +2755,8 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
     remaining = {}
     for t in active_tasks.items():
       remaining[t[0][6:]] = t[1][0]['total']
+    context['public_dataset'] = []
+    context['my_dataset'] = my_dataset
     context['region_list'] = predefined
     context['ds'] = ds
     context['collaborators'] = ds.collabs.all()
@@ -2773,7 +2857,7 @@ if >1 match, compute parent winner and merge others as children
 #   return HttpResponseRedirect(referer)
 
 """
-DEPRECATEE
+DEPRECATED
 DashboardView()
 list user datasets, study areas, collections, teaching resources
 """
