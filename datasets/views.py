@@ -1564,7 +1564,7 @@ def ds_insert_lpf(request, pk):
                   if t['identifier'][:4] == 'aat:' else None
                 fclass_list.append(fc)
               else:
-                fc = None
+                fc = FEATURE_CLASSES[3][0]
               print('from feat[types]:',t)
               print('PlaceType record newpl,newpl.src_id,t,fc',newpl,newpl.src_id,t,fc)
               objs['PlaceTypes'].append(PlaceType(
