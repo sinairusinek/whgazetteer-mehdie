@@ -32,6 +32,8 @@ es = Elasticsearch([{'host': 'localhost',
 import pandas as pd
 from pathlib import Path
 from shutil import copyfile
+import requests
+import os
 
 from areas.models import Area
 from collection.models import Collection
@@ -49,7 +51,7 @@ from main.choices import AUTHORITY_BASEURI
 from main.models import Log, Comment
 from places.models import *
 from resources.models import Resource
-
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 """
   email various, incl. Celery down notice
@@ -700,6 +702,42 @@ def write_wd_pass0(request, tid):
   params: pk (dataset id), auth, region, userarea, geom, scope
   each align_{auth} task runs matching es_lookup_{auth}() and writes Hit instances
 """
+def tsv_2_csv(data):
+  tsv_file = data
+  csv_table = pd.read_table(f'media/{tsv_file}', sep='\t')
+  s = data.split('/')
+  user = s[0]
+  name = s[1].split('.')[0]
+  csv_table.to_csv(f'media/{user}/{name}.csv',index=False)
+
+  return f'media/{user}/{name}.csv'
+  
+def mehdi_er(d1, d2):
+  d1 = DatasetFile.objects.get(dataset_id=d1)
+  d2 = DatasetFile.objects.get(dataset_id=d2)
+  m_dataset = d1.file.name
+  p_dataset = d2.file.name
+  m_csv = tsv_2_csv(m_dataset)
+  p_csv = tsv_2_csv(p_dataset)
+
+  print(m_csv, p_csv)
+  # m_csv = '/Users/macbookpro/Downloads/BT.csv'
+  # p_csv = '/Users/macbookpro/Downloads/BT.csv'
+
+  files = {
+      'first_csv': open(m_csv, 'rb'),
+      'second_csv': open(p_csv, 'rb')
+  }
+
+
+
+  r = requests.post(url='https://mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/', files=files)
+  return r.json()["csv download url"], r.status_code
+  
+def process_er(url):
+  c = pd.read_csv(url)  
+  print(c)
+
 def ds_recon(request, pk):
   ds = get_object_or_404(Dataset, id=pk)
   # TODO: handle multipolygons from "#area_load" and "#area_draw"
@@ -711,6 +749,16 @@ def ds_recon(request, pk):
   elif request.method == 'POST' and request.POST:
     print('ds_recon() request.POST:',request.POST)
     auth = request.POST['recon']
+    if auth == 'match_data':
+      m_dataset = request.POST['m_dataset']
+      p_dataset = request.POST['p_dataset']
+      csv_url, status_code = mehdi_er(m_dataset, p_dataset)
+      context = {'csv_url':csv_url}
+      if status_code > 200:
+        return HttpResponse('Error with Datasets, check again')
+      process_er(csv_url)
+      messages.add_message(request, messages.INFO, "<span class='text-success'>Your ER reconciliation task has been processsed.</span><br/>Download the csv file using the link below, results will appear below (you may have to refresh screen). <br/> <a href='{}'>Download Match File</a>".format(csv_url))
+      return redirect('/datasets/'+str(ds.id)+'/reconcile')
     language = request.LANGUAGE_CODE
     if auth == 'idx' and ds.public == False:
       messages.add_message(request, messages.ERROR, """Dataset must be public before indexing!""")
