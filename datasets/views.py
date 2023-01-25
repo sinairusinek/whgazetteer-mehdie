@@ -15,6 +15,7 @@ from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.views.generic import (CreateView, ListView, UpdateView, DeleteView, DetailView)
 from django_celery_results.models import TaskResult
+from sentry_sdk import capture_exception, capture_message
 
 
 # external
@@ -2101,6 +2102,7 @@ def failed_upload_notification(user, tempfn):
   upload file, validate format, create DatasetFile instance,
   redirect to dataset.html for db insert if context['format_ok']
 """
+
 class DatasetCreateView(LoginRequiredMixin, CreateView):
   login_url = '/accounts/login/'
   redirect_field_name = 'redirect_to'
@@ -2185,8 +2187,9 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
         os.rename(tempfn, newfn)
         result = validate_tsv(newfn, ext)
         print('tsv result', result)
-      except:
+      except Exception as e:
         # email to user, admin
+        capture_exception(e)
         failed_upload_notification(user, tempfn)
         messages.error(self.request, fail_msg)
         return HttpResponseServerError()
