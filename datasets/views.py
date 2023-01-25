@@ -2250,21 +2250,19 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
                 # open new file for tsv write
                 newfn = tempfn + '.tsv'
-                fout = codecs.open(newfn, 'w', encoding='utf8')
+                with codecs.open(newfn, 'w', encoding='utf8') as file_out:
+                    # add ext to tempfn (pandas need this)
+                    newtempfn = tempfn + '.' + ext
+                    os.rename(tempfn, newtempfn)
 
-                # add ext to tempfn (pandas need this)
-                newtempfn = tempfn + '.' + ext
-                os.rename(tempfn, newtempfn)
+                    # dataframe from spreadsheet
+                    df = pd.read_excel(newtempfn, converters={
+                        'id': str, 'start': str, 'end': str,
+                        'aat_types': str, 'lon': float, 'lat': float})
 
-                # dataframe from spreadsheet
-                df = pd.read_excel(newtempfn, converters={
-                    'id': str, 'start': str, 'end': str,
-                    'aat_types': str, 'lon': float, 'lat': float})
-
-                # write it as tsv
-                table = df.to_csv(sep='\t', index=False).replace('\nan', '')
-                fout.write(table)
-                fout.close()
+                    # write it as tsv
+                    table = df.to_csv(sep='\t', index=False).replace('\nan', '')
+                    file_out.write(table)
 
                 # validate it...
                 result = validate_tsv(newfn, 'tsv')
@@ -2321,13 +2319,13 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
             # write request obj file to user directory
             if ext in ['csv', 'tsv', 'json']:
-                file_out = codecs.open(filepath, 'w', 'utf8')
-                try:
-                    for chunk in file.chunks():
-                        file_out.write(chunk.decode("utf-8"))
-                except Exception as e:
-                    print(e)
-                    sys.exit(sys.exc_info())
+                with codecs.open(filepath, 'w', 'utf8') as file_out:
+                    try:
+                        for chunk in file.chunks():
+                            file_out.write(chunk.decode("utf-8"))
+                    except Exception as e:
+                        print(e)
+                        sys.exit(sys.exc_info())
 
             # if spreadsheet, copy newfn (tsv conversion)
             if ext in ['xlsx', 'ods']:
