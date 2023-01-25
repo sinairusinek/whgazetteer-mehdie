@@ -8,6 +8,9 @@ updates: 2.2.10 (20200211); 2.2.8(20191204); 2.2.4 (20190819); 2.1.7 (?); 2.1.2 
 import os
 from celery.schedules import crontab
 from django.contrib.messages import constants as messages
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -271,6 +274,17 @@ if os.name == 'nt':
     os.environ['GDAL_DATA'] = OSGEO4W + r"\share\gdal"
     os.environ['PROJ_LIB'] = OSGEO4W + r"\share\proj"
     os.environ['PATH'] = OSGEO4W + r"\bin;" + os.environ['PATH']
+
+
+sentry_sdk.init(
+    dsn="https://8ed85dfd268f456c978b6c1c19bd4124@o4504564890271745.ingest.sentry.io/4504564892893184",
+    integrations=[DjangoIntegration()],
+    # If you wish to associate users to errors (assuming you are using
+    # django.contrib.auth) you may enable sending PII data.
+    traces_sample_rate=1.0,
+    send_default_pii=True
+)
+
 
 try:
   from .local_settings import *
