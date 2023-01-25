@@ -2198,9 +2198,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
         file = self.request.FILES['file']
         filename = file.name
         mimetype = file.content_type
-
         newfn, newtempfn = ['', '']
-        print('form_valid() mimetype', mimetype)
 
         # open & write tempf to a temp location;
         # call it tempfn for reference
@@ -2208,36 +2206,19 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
         try:
             for chunk in data['file'].chunks():
                 os.write(tempf, chunk)
-        except:
+        except Exception as e:
+            print(e)
             raise Exception("Problem with the input file %s" % self.request.FILES['file'])
         finally:
             os.close(tempf)
 
-        print('tempfn in DatasetCreate()', tempfn)
-
-        # open, sniff, validate
-        # pass to ds_insert_{tsv|lpf} if valid
-
-        fin = codecs.open(tempfn, 'r')
         valid_mime = mimetype in mthash_plus.mimetypes
 
-        if valid_mime:
-            if mimetype.startswith('text/'):
-                encoding = get_encoding_delim(tempfn)
-            elif 'spreadsheet' in mimetype:
-                encoding = get_encoding_excel(tempfn)
-            elif mimetype.startswith('application/'):
-                encoding = fin.encoding
-            print('encoding in DatasetCreate()', encoding)
-        else:
+        if not valid_mime:
             context['errors'] = "Not a valid file type; must be one of [.csv, .tsv, .xlsx, .ods, .json]"
             return self.render_to_response(self.get_context_data(form=form, context=context))
 
-        # it's csv, tsv, spreadsheet, or json...
-        # if utf8, get extension and validate
-        # if encoding and encoding.lower().startswith('utf-8'):
         ext = mthash_plus.mimetypes[mimetype]
-        print('DatasetCreateView() extension', ext)
         fail_msg = "A database insert failed and we aren't sure why. The WHG team has been notified " + \
                    "and will follow up by email to <b>" + user.username + "</b> (" + user.email + ")"
 
@@ -2245,24 +2226,19 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
         if ext == 'json':
             try:
                 result = validate_lpf(tempfn, 'coll')
-            except:
+            except Exception as e:
                 # email to user, admin
                 failed_upload_notification(user, tempfn)
                 # return message to 500.html
                 messages.error(self.request, fail_msg)
                 return HttpResponseServerError()
 
-        # for delimited, fvalidate() is performed on the entire file
-        # on fail, raises server error
         elif ext in ['csv', 'tsv']:
             try:
-                # fvalidate() wants an extension
                 newfn = tempfn + '.' + ext
                 os.rename(tempfn, newfn)
                 result = validate_tsv(newfn, ext)
-                print('tsv result', result)
             except Exception as e:
-                # email to user, admin
                 capture_exception(e)
                 failed_upload_notification(user, tempfn)
                 messages.error(self.request, fail_msg)
@@ -2270,7 +2246,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
         elif ext in ['xlsx', 'ods']:
             try:
-                print('spreadsheet, use pandas')
                 import pandas as pd
 
                 # open new file for tsv write
@@ -2280,7 +2255,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 # add ext to tempfn (pandas need this)
                 newtempfn = tempfn + '.' + ext
                 os.rename(tempfn, newtempfn)
-                print('renamed tempfn for pandas:', tempfn)
 
                 # dataframe from spreadsheet
                 df = pd.read_excel(newtempfn, converters={
@@ -2292,33 +2266,23 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 fout.write(table)
                 fout.close()
 
-                print('to validate_tsv(newfn):', newfn)
                 # validate it...
                 result = validate_tsv(newfn, 'tsv')
-            except:
-                # email to user, admin
+            except Exception as e:
+                print(e)
                 failed_upload_notification(user, newfn)
                 messages.error(self.request, "Database insert failed and we aren't sure why. " +
                                "The WHG team has been notified and will follow up by email to <b>" +
                                user.username + '</b> (' + user.email + ')')
                 return HttpResponseServerError()
 
-        print('validation complete, still in DatasetCreateView')
-
-        # validated -> create Dataset, DatasetFile, Log instances,
-        # advance to dataset_detail
-        # else present form again with errors
         if len(result['errors']) == 0:
             context['status'] = 'format_ok'
-
-            print('validated, no errors; result:', result)
-            print('cleaned_data', form.cleaned_data)
 
             # new Dataset record ('owner','id','label','title','description')
             dsobj = form.save(commit=False)
             dsobj.ds_status = 'format_ok'
             dsobj.numrows = result['count']
-            clean_label = form.cleaned_data['label'].replace(' ', '_')
             if not form.cleaned_data['uri_base']:
                 dsobj.uri_base = 'https://whgazetteer.org/api/db/?id='
 
@@ -2327,24 +2291,23 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             dsobj.total_links = 0
             try:
                 dsobj.save()
-            except:
-                # self.args['form'] = form
+            except Exception as e:
+                print(e)
                 return render(self.request, 'datasets/dataset_create.html', self.args)
 
-            #
             # create user directory if necessary
-            userdir = r'media/user_' + user.username + '/'
-            if not Path(userdir).exists():
-                os.makedirs(userdir)
+            user_dir = r'media/user_' + user.username + '/'
+            if not Path(user_dir).exists():
+                os.makedirs(user_dir)
 
             # build path, and rename file if already exists in user area
-            file_exists = Path(userdir + filename).exists()
+            file_exists = Path(user_dir + filename).exists()
             if not file_exists:
-                filepath = userdir + filename
+                filepath = user_dir + filename
             else:
                 splitty = filename.split('.')
                 filename = splitty[0] + '_' + tempfn[-7:] + '.' + splitty[1]
-                filepath = userdir + filename
+                filepath = user_dir + filename
 
             # write log entry
             Log.objects.create(
@@ -2356,23 +2319,18 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 user_id=user.id
             )
 
-            print('pre-write')
-            print('ext=' + ext + '; newfn=' + newfn + '; filepath=' + filepath +
-                  '; tempfn=' + tempfn + '; newtempfn=' + newtempfn)
-
             # write request obj file to user directory
             if ext in ['csv', 'tsv', 'json']:
-                fout = codecs.open(filepath, 'w', 'utf8')
+                file_out = codecs.open(filepath, 'w', 'utf8')
                 try:
                     for chunk in file.chunks():
-                        fout.write(chunk.decode("utf-8"))
-                except:
-                    print('error writing file; chunk' + str(chunk))
+                        file_out.write(chunk.decode("utf-8"))
+                except Exception as e:
+                    print(e)
                     sys.exit(sys.exc_info())
 
             # if spreadsheet, copy newfn (tsv conversion)
             if ext in ['xlsx', 'ods']:
-                print('copying newfn -> filepath', newfn, filepath)
                 shutil.copy(newfn, filepath + '.tsv')
 
             # create initial DatasetFile record
@@ -2389,8 +2347,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 numrows=result['count']
             )
 
-            # data will be written on load of dataset.html w/dsobj.status = 'format_ok'
-            # return redirect('/datasets/'+str(dsobj.id)+'/detail')
             return redirect('/datasets/' + str(dsobj.id) + '/summary')
 
         else:
@@ -2401,17 +2357,10 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             context['columns'] = result['columns'] \
                 if ext != 'json' else []
 
-            # os.remove(tempfn)
-
             return self.render_to_response(
                 self.get_context_data(
                     form=form, context=context
                 ))
-
-    def get_context_data(self, *args, **kwargs):
-        context = super(DatasetCreateView, self).get_context_data(*args, **kwargs)
-        # context['action'] = 'create'
-        return context
 
 
 """
