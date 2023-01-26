@@ -195,7 +195,7 @@ class PlaceSerializer(serializers.ModelSerializer):
     whens = PlaceWhenSerializer(many=True, read_only=True)
     descriptions = PlaceDescriptionSerializer(many=True, read_only=True)
     depictions = PlaceDepictionSerializer(many=True, read_only=True)
-    traces = serializers.SerializerMethodField('trace_anno')
+    traces = serializers.SerializerMethodField(method_name='trace_anno')
 
     def trace_anno(self, place):
         return coreserializers.serialize("json", TraceAnnotation.objects.filter(place=place.id))
