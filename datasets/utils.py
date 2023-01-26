@@ -471,11 +471,13 @@ def parse_errors_tsv(errors):
 # return [int(a) for a in arr]
 
 def parse_errors_lpf(errors):
-    print('relative_path 0', errors[0]['error'].relative_path)
-    "deque(['geometry', 'geometries', 0])"
-    msg = [{"row": e['feat'], "msg": e['error'].message, "path":
-        re.search('deque\(\[(.*)\]\)',
-                  str(e['error'].relative_path)).group(1)} for e in errors]
+    msg = [
+        {
+            "row": e['feat'],
+            "msg": e['error'].message,
+            "path": re.search('deque\(\[(.*)\]\)', str(e['error'].relative_path)).group(1)
+        } for e in errors
+    ]
     return msg
 
 
@@ -566,29 +568,24 @@ def parsedates_lpf(feat):
     return {"intervals": unique, "minmax": minmax}
 
 
-#
-# validate Linked Places json-ld (w/jsonschema)
-# format ['coll' (FeatureCollection) | 'lines' (json-lines)]
 def validate_lpf(tempfn, format):
-    # wd = '/Users/karlg/Documents/Repos/_whgazetteer/'
     schema = json.loads(codecs.open('datasets/static/validate/schema_lpf_v1.2.json', 'r', 'utf8').read())
     # rename tempfn
     newfn = tempfn + '.jsonld'
     os.rename(tempfn, newfn)
-    infile = codecs.open(newfn, 'r', 'utf8')
     result = {"format": "lpf", "errors": []}
     [countrows, count_ok] = [0, 0]
+    with codecs.open(newfn, 'r', 'utf8') as infile:
+        jdata = json.loads(infile.read())
 
-    # TODO: handle json-lines
-    jdata = json.loads(infile.read())
-    if len(set(['type', '@context', 'features']) - set(jdata.keys())) > 0 \
+    ls = ['type', '@context', 'features']
+    if len(set(ls) - set(jdata.keys())) > 0 \
             or jdata['type'] != 'FeatureCollection' \
             or len(jdata['features']) == 0:
-        print('not valid GeoJSON-LD')
+        pass
     else:
         for feat in jdata['features']:
             countrows += 1
-            # print(feat['properties']['title'])
             try:
                 validate(
                     instance=feat,
@@ -598,45 +595,25 @@ def validate_lpf(tempfn, format):
                 count_ok += 1
             except:
                 err = sys.exc_info()
-                print('res: some kinda error', err[1].args)
-                # result["errors"].append({"feat":countrows,'error':err[1].args[0]})
                 result["errors"].append({"feat": countrows, 'error': err[1]})
         result['count'] = countrows
     return result
 
 
-#
-# validate LP-TSV file (w/frictionless.py)
-# 
-# wd='/Users/karlg/documents/repos/_whgazetteer/_testdata/'
-# fn=wd+'priest_1line.tsv'
+# incoming csv or tsv
 def validate_tsv(fn, ext):
-    # incoming csv or tsv
-    print('validate_tsv() fn', fn)
     result = {"format": "delimited", "errors": []}
-    schema_lptsv = json.loads(codecs.open('datasets/static/validate/schema_tsv.json', 'r', 'utf8').read())
-    print(schema_lptsv)
-    try:
-        report = fvalidate(fn, schema=schema_lptsv, sync_schema=True)
-    except:
-        err = sys.exc_info()
-        print('error on fvalidate', err)
-        print('error args', err[1].args)
-    print(report)
+    schema_lpt_sv = json.loads(codecs.open('datasets/static/validate/schema_tsv.json', 'r', 'utf8').read())
+    report = fvalidate(fn, schema=schema_lpt_sv, sync_schema=True)
     rpt = report['tables'][0]
     req = ['id', 'title', 'title_source', 'start']
-
     result['count'] = rpt['stats']['rows']  # count
     result['columns'] = rpt['header']
-    # filter harmless errors
-    result['errors'] = [x['message'] for x in rpt['errors'] \
-                        if x['code'] not in ["blank-header", "missing-header"]]
+    result['errors'] = [x['message'] for x in rpt['errors'] if x['code'] not in ["blank-header", "missing-header"]]
     if len(list(set(req) - set(rpt['header']))) > 0:
         result['errors'].insert(0, 'Required columns missing or header malformed: ' +
                                 ', '.join(list(set(req) - set(rpt['header']))))
-
     # TODO: filter cascade errors, e.g. caused by missing-cell
-
     return result
 
 
@@ -646,7 +623,6 @@ def frictionless_tsv(tempfn):
     # TODO: detect encoding
     newfn = tempfn + '.tsv'
     os.rename(tempfn, newfn)
-    print('tempfn,newfn', tempfn, type(tempfn), newfn, type(newfn))
     schema_lptsv = json.loads(codecs.open('datasets/static/validate/schema_tsv.json', 'r', 'utf8').read())
     report = gvalidate(newfn,
                        schema=schema_lptsv,

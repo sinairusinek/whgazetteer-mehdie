@@ -1,21 +1,16 @@
-# datasets.views
-# NB!!! some imports greyed out but ARE USED!
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.models import User
-from django.contrib.gis.geos import GEOSGeometry
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-from django.db.models import Q
 from django.db.utils import DataError
 from django.forms import modelformset_factory
-from django.http import HttpResponseServerError, HttpResponseRedirect, JsonResponse, HttpResponse
-from django.shortcuts import redirect, get_object_or_404, render
+from django.http import HttpResponseServerError, HttpResponseRedirect
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.generic import (CreateView, ListView, UpdateView, DeleteView, DetailView)
-from django_celery_results.models import TaskResult
-from sentry_sdk import capture_exception, capture_message
+from sentry_sdk import capture_exception
+from django.db import transaction
 
 # external
 from celery import current_app as celapp
@@ -2187,10 +2182,10 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
     success_message = 'dataset created'
 
     def form_invalid(self, form):
-        print('form invalid...', form.errors.as_data())
         context = {'form': form}
         return self.render_to_response(context=context)
 
+    @transaction.atomic()
     def form_valid(self, form):
         data = form.cleaned_data
         context = {"format": data['format']}
@@ -2227,11 +2222,11 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             try:
                 result = validate_lpf(tempfn, 'coll')
             except Exception as e:
-                # email to user, admin
+                capture_exception(e)
                 failed_upload_notification(user, tempfn)
-                # return message to 500.html
                 messages.error(self.request, fail_msg)
-                return HttpResponseServerError()
+                # return HttpResponseServerError()
+                raise e
 
         elif ext in ['csv', 'tsv']:
             try:
@@ -2242,7 +2237,8 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 capture_exception(e)
                 failed_upload_notification(user, tempfn)
                 messages.error(self.request, fail_msg)
-                return HttpResponseServerError()
+                # return HttpResponseServerError()
+                raise e
 
         elif ext in ['xlsx', 'ods']:
             try:
@@ -2264,15 +2260,14 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                     table = df.to_csv(sep='\t', index=False).replace('\nan', '')
                     file_out.write(table)
 
-                # validate it...
                 result = validate_tsv(newfn, 'tsv')
             except Exception as e:
-                print(e)
+                capture_exception(e)
                 failed_upload_notification(user, newfn)
                 messages.error(self.request, "Database insert failed and we aren't sure why. " +
                                "The WHG team has been notified and will follow up by email to <b>" +
                                user.username + '</b> (' + user.email + ')')
-                return HttpResponseServerError()
+                raise e
 
         if len(result['errors']) == 0:
             context['status'] = 'format_ok'
@@ -2290,6 +2285,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             try:
                 dsobj.save()
             except Exception as e:
+                capture_exception(e)
                 print(e)
                 return render(self.request, 'datasets/dataset_create.html', self.args)
 
@@ -2309,7 +2305,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
             # write log entry
             Log.objects.create(
-                # category, logtype, "timestamp", subtype, dataset_id, user_id
                 category='dataset',
                 logtype='ds_create',
                 subtype=data['datatype'],
@@ -2324,8 +2319,8 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                         for chunk in file.chunks():
                             file_out.write(chunk.decode("utf-8"))
                     except Exception as e:
-                        print(e)
-                        sys.exit(sys.exc_info())
+                        capture_exception(e)
+                        raise e
 
             # if spreadsheet, copy newfn (tsv conversion)
             if ext in ['xlsx', 'ods']:

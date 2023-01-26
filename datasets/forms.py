@@ -94,22 +94,28 @@ class DatasetDetailModelForm(forms.ModelForm):
 
 
 class DatasetCreateModelForm(forms.ModelForm):
+    file = forms.FileField()
+    rev = forms.IntegerField()
+    format = forms.ChoiceField(choices=FORMATS, widget=forms.RadioSelect, initial='delimited')
+    delimiter = forms.CharField()
+    header = forms.CharField()
+    df_status = forms.ChoiceField(choices=STATUS_FILE)
+    numrows = forms.IntegerField()
+    upload_date = forms.DateTimeField()
+
     class Meta:
         model = Dataset
-        # file fields = ('file','rev','uri_base','format','dataset_id','delimiter',
-        #   'status','accepted_date','header','numrows')
         fields = ('owner', 'id', 'title', 'label', 'datatype', 'description', 'uri_base', 'public',
                   'creator', 'contributors', 'source', 'webpage', 'image_file', 'featured')
         widgets = {
-            'description': forms.Textarea(attrs={
-                'rows': 2, 'cols': 45, 'class': 'textarea', 'placeholder': 'Brief description'}), 
-            'uri_base': forms.URLInput(attrs={
-                    'placeholder': 'Leave blank unless record IDs are URIs', 'size': 45}), 
+            'description': forms.Textarea(
+                attrs={'rows': 2, 'cols': 45, 'class': 'textarea', 'placeholder': 'Brief description'}),
+            'uri_base': forms.URLInput(attrs={'placeholder': 'Leave blank unless record IDs are URIs', 'size': 45}),
             'title': forms.TextInput(attrs={'size': 45}),
-            'label': forms.TextInput(attrs={'placeholder': '20 char max; no spaces','size': 22}),
+            'label': forms.TextInput(attrs={'placeholder': '20 char max; no spaces', 'size': 22}),
             'creator': forms.TextInput(attrs={'size': 45}),
-            'source': forms.TextInput(attrs={'size': 45}), 
-            'featured': forms.TextInput(attrs={'size': 4}), 
+            'source': forms.TextInput(attrs={'size': 45}),
+            'featured': forms.TextInput(attrs={'size': 4}),
             'webpage': forms.URLInput(attrs={'size': 45, 'placeholder': 'Project home page, if any'})
         }
 
@@ -118,19 +124,6 @@ class DatasetCreateModelForm(forms.ModelForm):
         if ' ' in label:
             raise forms.ValidationError('Label cannot contain any spaces; replace with underscores (_)')
         return label
-
-    # fields used to create new DatasetFile record from form
-    # uri_base = forms.URLField(widget=forms.URLInput(
-        # attrs={'placeholder':'Leave blank unless record IDs are URIs','size':35}))
-    file = forms.FileField()
-    rev = forms.IntegerField()
-    format = forms.ChoiceField(
-        choices=FORMATS, widget=forms.RadioSelect, initial='delimited')
-    delimiter = forms.CharField()
-    header = forms.CharField()
-    df_status = forms.ChoiceField(choices=STATUS_FILE)
-    numrows = forms.IntegerField()
-    upload_date = forms.DateTimeField()
 
     def __init__(self, *args, **kwargs):
         super(DatasetCreateModelForm, self).__init__(*args, **kwargs)
