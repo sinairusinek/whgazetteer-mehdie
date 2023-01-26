@@ -2202,7 +2202,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             for chunk in data['file'].chunks():
                 os.write(tempf, chunk)
         except Exception as e:
-            print(e)
             raise Exception("Problem with the input file %s" % self.request.FILES['file'])
         finally:
             os.close(tempf)
@@ -2239,7 +2238,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 messages.error(self.request, fail_msg)
                 # return HttpResponseServerError()
                 raise e
-
         elif ext in ['xlsx', 'ods']:
             try:
                 import pandas as pd

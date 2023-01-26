@@ -301,16 +301,12 @@ class PlaceTableSerializer(serializers.ModelSerializer):
 
 
 class FeatureSerializer(GeoFeatureModelSerializer):
-    print('FeatureSerializer')
     geom = GeometrySerializerMethodField()
 
     def get_geom(self, obj):
-        # print('obj',obj.__dict__)
         s = json.dumps(obj.jsonb)
         g1 = geojson.loads(s)
         g2 = shape(g1)
-        djgeo = GEOSGeometry(g2.wkt)
-        # print('geom', djgeo.geojson)
         return GEOSGeometry(g2.wkt)
 
     #
