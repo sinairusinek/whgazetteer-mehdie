@@ -96,8 +96,6 @@ class DatasetDetailModelForm(forms.ModelForm):
 class DatasetCreateModelForm(forms.ModelForm):
     class Meta:
         model = Dataset
-        # file fields = ('file','rev','uri_base','format','dataset_id','delimiter',
-        #   'status','accepted_date','header','numrows')
         fields = ('owner', 'id', 'title', 'label', 'datatype', 'description', 'uri_base', 'public',
                   'creator', 'contributors', 'source', 'webpage', 'image_file', 'featured')
         widgets = {
