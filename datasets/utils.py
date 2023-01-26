@@ -1,16 +1,15 @@
+import codecs, csv, datetime, sys, openpyxl, os, re, time
+import simplejson as json
+
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
 from django.http import FileResponse, JsonResponse, HttpResponse
-from django.shortcuts import get_object_or_404, render  # , redirect
+from django.shortcuts import get_object_or_404, render
 from django.views.generic import View
 
-import codecs, csv, datetime, sys, openpyxl, os, pprint, re, time
-import simplejson as json
-# from celery import task, shared_task
 from chardet import detect
-from django_celery_results.models import TaskResult
 from frictionless import validate as fvalidate
 from goodtables import validate as gvalidate
 from jsonschema import draft7_format_checker, validate
@@ -18,13 +17,10 @@ from shapely import wkt
 
 from areas.models import Country
 from datasets.models import Dataset, DatasetUser, Hit
-from datasets.static.hashes import aat, parents, aat_q
+from datasets.static.hashes import parents, aat_q
 from datasets.static.hashes import aliases as al
-# from datasets.tasks import make_download
 from main.models import Log
 from places.models import PlaceGeom, Type
-
-pp = pprint.PrettyPrinter(indent=1)
 
 
 # ***
@@ -50,14 +46,11 @@ def downloadLP7(request):
 
 def downloader(request, *args, **kwargs):
     user = request.user
-    print('request.user', request.user)
-    print('downloader() request.POST', request.POST)
     dsid = request.POST.get('dsid') or None
     collid = request.POST.get('collid') or None
     from datasets.tasks import make_download
     # POST *should* be the only case...
     if request.method == 'POST' and request.is_ajax:
-        print('ajax == True')
         format = request.POST['format']
         download_task = make_download.delay(
             {"username": user.username, "userid": user.id},
@@ -65,20 +58,15 @@ def downloader(request, *args, **kwargs):
             collid=collid,
             format=format,
         )
-        print('task to Celery', download_task.task_id)
         # return task_id
         obj = {'task_id': download_task.task_id}
-        print('obj from downloader()', obj)
 
         # return render(request, 'datasets/ds_meta.html', context=context)
         return HttpResponse(json.dumps(obj), content_type='application/json')
-
     elif request.method == 'POST' and not request.is_ajax:
-        print('request.POST (not ajax)', request.POST)
-
-
+        ...
     elif request.method == 'GET':
-        print('request.GET', request.GET)
+        ...
 
 
 """ deprecatING (still used from collection download modal ) """
@@ -86,8 +74,6 @@ def downloader(request, *args, **kwargs):
 
 def download_augmented(request, *args, **kwargs):
     from django.db import connection
-    print('download_augmented kwargs', kwargs)
-    print('download_augmented request', request)
     username = request.user.username
     ds = get_object_or_404(Dataset, pk=kwargs['id'])
     dslabel = ds.label
@@ -96,18 +82,13 @@ def download_augmented(request, *args, **kwargs):
     date = makeNow()
 
     req_format = kwargs['format']
-    if req_format is not None:
-        print('download format', req_format)
 
     features = ds.places.all().order_by('id')
 
-    print('download_augmented() file format', fileobj.format)
-    print('download_augmented() req. format', req_format)
     start = datetime.datetime.now()
     if fileobj.format == 'delimited' and req_format in ['tsv', 'delimited']:
         # get header
         header = ds.files.all().order_by('id')[0].header
-        print('making a tsv file')
         # make file name
         # fn = 'media/user_'+user+'/'+ds.label+'_aug_'+date+'.tsv'
         fn = 'media/downloads/' + username + '_' + dslabel + '_' + date + '.tsv'
@@ -137,7 +118,6 @@ def download_augmented(request, *args, **kwargs):
             for f in features:
                 geoms = f.geoms.all()
                 gobj = augGeom(geoms)
-                # print('gobj',f.id, gobj)
                 row = [str(f.src_id),
                        str(f.id),
                        f.title,
@@ -151,17 +131,13 @@ def download_augmented(request, *args, **kwargs):
                 # progress_recorder.set_progress(i + 1, len(features), description="tsv progress")
         response = FileResponse(open(fn, 'rb'), content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="' + os.path.basename(fn) + '"'
-        end = datetime.datetime.now()
-        print('elapsed tsv', end - start)
         return response
     else:
-        print('building lpf file')
         # make file name
         fn = 'media/downloads/' + username + '_' + dslabel + '_' + date + '.tsv'
         result = {"type": "FeatureCollection", "features": [],
                   "@context": "https://raw.githubusercontent.com/LinkedPasts/linked-places/master/linkedplaces-context-v1.1.jsonld",
                   "filename": "/" + fn}
-        print('augmented lpf template', result)
         with open(fn, 'w', encoding='utf-8') as outfile:
             with connection.cursor() as cursor:
                 cursor.execute("""with namings as 
@@ -237,7 +213,6 @@ def download_augmented(request, *args, **kwargs):
                 # outfile.write(json.dumps(result))
 
         end = datetime.datetime.now()
-        print('elapsed lpf', end - start)
         # response is reopened file
         response = FileResponse(open(fn, 'rb'), content_type='text/json')
         response['Content-Disposition'] = 'attachment; filename="' + os.path.basename(fn) + '"'
@@ -253,7 +228,6 @@ def download_file(request, *args, **kwargs):
     fileobj = ds.files.all().order_by('-rev')[0]
     fn = 'media/' + fileobj.file.name
     file_handle = fileobj.file.open()
-    print('download_file: kwargs,fn,fileobj.format', kwargs, fn, fileobj.format)
     # set content type
     response = FileResponse(file_handle, content_type='text/csv' if fileobj.format == 'delimited' else 'text/json')
     response['Content-Disposition'] = 'attachment; filename="' + fileobj.file.name + '"'
@@ -264,21 +238,16 @@ def download_file(request, *args, **kwargs):
 #
 # experiment (deprecated?)
 def download_augmented_slow(request, *args, **kwargs):
-    print('download_augmented kwargs', kwargs)
     user = request.user.username
     ds = get_object_or_404(Dataset, pk=kwargs['id'])
     fileobj = ds.files.all().order_by('-rev')[0]
     date = makeNow()
 
     req_format = kwargs['format']
-    if req_format is not None:
-        print('got format', req_format)
-        # qs = qs.filter(title__icontains=query)
 
     features = ds.places.all()
 
     if fileobj.format == 'delimited' and req_format == 'tsv':
-        print('augmented for delimited')
         # make file name
         fn = 'media/user_' + user + '/' + ds.label + '_aug_' + date + '.tsv'
 
@@ -314,7 +283,6 @@ def download_augmented_slow(request, *args, **kwargs):
                     gobj['new'] if 'new' in gobj else None,
                     str(augLinks(f.links.all()))]
                 writer.writerow(row)
-                # print(row)
         response = FileResponse(open(fn, 'rb'), content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="' + os.path.basename(fn) + '"'
 
@@ -326,7 +294,6 @@ def download_augmented_slow(request, *args, **kwargs):
         with open(fn, 'w', encoding='utf-8') as outfile:
             # fcoll = {"type":"FeatureCollection","features":[]}
             for f in features:
-                print('dl_aug, lpf adding feature:', f)
                 feat = {"type": "Feature",
                         "properties": {
                             "@id": f.dataset.uri_base + f.src_id,
@@ -363,7 +330,6 @@ def download_augmented_slow(request, *args, **kwargs):
 # GeoJSON for all places in a dataset
 # feeds ds_browse (owner view); ds_places, collection_places (public)
 def fetch_geojson_ds(request, *args, **kwargs):
-    print('fetch_geojson_ds kwargs', kwargs)
     dsid = kwargs['dsid']
     ds = get_object_or_404(Dataset, pk=dsid)
 
@@ -390,7 +356,6 @@ def fetch_geojson_ds(request, *args, **kwargs):
 # flatten for gl time-mapping
 # one feature per geometry w/min & max
 def fetch_geojson_flat(request, *args, **kwargs):
-    print('fetch_geojson_flat kwargs', kwargs)
     dsid = kwargs['dsid']
     ds = get_object_or_404(Dataset, pk=dsid)
 
@@ -450,26 +415,6 @@ def parse_errors_tsv(errors):
     return new_errors
 
 
-# tsv error: ['The cell "" in row at position "2" and field "id" at position "1" does not conform to a constraint: constraint "required" is "True"', 'The row at position "2" does not conform to the primary key constraint: cells composing the primary keys are all "None"']
-
-# lpf error: [{'feat': 2, 'error': "'null' is not of type 'object'"}, {'feat': 3, 'error': "'null' is not of type 'object'"}]
-
-# *** NOT YET CALLED
-# format lpf validation errors for modal display
-# *** 
-# def parse_errors_lpf(errors):
-# new_errors = []
-# for e in error
-# print('parse_errors_lpf()',errors)
-
-# ***
-# parse start & end for insert to db
-# TODO: is year-only minmax useful in GUI?
-# parsedates for ds_insert_lpf will be different
-# ***
-# def intmap(arr):
-# return [int(a) for a in arr]
-
 def parse_errors_lpf(errors):
     msg = [
         {
@@ -481,11 +426,10 @@ def parse_errors_lpf(errors):
     return msg
 
 
-#
 # called by ds_insert_tsv()
 # returns object for PlaceWhen.jsonb in db
 # and minmax int years for PlacePortalView()
-#
+
 def parsedates_tsv(s, e):
     s_yr = s[:5] if s[0] == '-' else s[:4]
     e_yr = e[:5] if e[0] == '-' else e[:4]
@@ -527,13 +471,11 @@ def parsedates_lpf(feat):
         try:
             intervals += timespansReduce(feat['when']['timespans'])
         except:
-            print('parsedates_lpf hung on', feat['@id'])
+            ...
 
     # which feat keys might have a when?
     possible_keys = list(set(feat.keys() & \
                              set(['names', 'types', 'relations', 'geometry'])))
-    print('possible_keys in parsedates_lpf()', possible_keys)
-
     # first, geometry
     # collections...
     geom = feat['geometry'] if 'geometry' in feat else None
@@ -613,8 +555,9 @@ def validate_tsv(fn, ext):
     if len(list(set(req) - set(rpt['header']))) > 0:
         result['errors'].insert(0, 'Required columns missing or header malformed: ' +
                                 ', '.join(list(set(req) - set(rpt['header']))))
+    raise ValueError(f'{result["errors"]}')
     # TODO: filter cascade errors, e.g. caused by missing-cell
-    return result
+    # return result
 
 
 # nextgen goodtables, allows xlsx, ods but has issues
@@ -630,8 +573,6 @@ def frictionless_tsv(tempfn):
                        # row_limit=20000,
                        row_limit=30000,
                        skip_errors=['missing-header', 'missing-cell', 'non-matching-header'])
-    pp.pprint(report)
-    # print('error count',report['error-count'])
     result['count'] = report['tables'][0]['row-count'] - 1  # counts header apparently
     result['columns'] = report['tables'][0]['headers']
     result['file'] = report['tables'][0]['source']
@@ -674,8 +615,6 @@ def aat_lookup(aid):
         typeobj = get_object_or_404(Type, aat_id=aid)
         return typeobj.term
     except:
-        print(str(aid) + ' broke aat_lookup()', sys.exc_info())
-        # return {"label": None, "fclass":None}
         return None
 
 
@@ -900,7 +839,7 @@ def hully(g_list):
         hull = GeometryCollection(mp).convex_hull
         # hull=GeometryCollection([GEOSGeometry(json.dumps(g)) for g in g_list]).convex_hull
     except:
-        print('hully() failed on g_list', g_list)
+        ...
 
     if hull.geom_type in ['Point', 'LineString', 'Polygon']:
         # buffer hull, but only a little if near meridian
@@ -913,17 +852,14 @@ def hully(g_list):
             else:
                 hull = hull.buffer(0.1)
         except:
-            print('hully buffer error longs:', longs)
-    # print(hull.geojson)
+            ...
     return json.loads(hull.geojson) if hull.geojson != None else []
 
 
 def parse_wkt(g):
-    # print('wkt',g)
     from shapely.geometry import mapping
     gw = wkt.loads(g)
     feature = json.loads(json.dumps(mapping(gw)))
-    # print('wkt, feature',g, feature)
     return feature
 
 
@@ -949,14 +885,12 @@ def myprojects(me):
 #
 def parsejson(value, key):
     """returns value for given key"""
-    print('parsejson() value', value)
     obj = json.loads(value.replace("'", '"'))
     return obj[key]
 
 
 #
 def makeCoords(lonstr, latstr):
-    # print(type(lonstr),latstr)
     lon = float(lonstr) if lonstr not in ['', 'nan'] else ''
     lat = float(latstr) if latstr not in ['', 'nan'] else ''
     # lon = float(lonstr) if lonstr != '' else ''
@@ -967,11 +901,9 @@ def makeCoords(lonstr, latstr):
 
 # might be GeometryCollection or singleton
 def ccodesFromGeom(geom):
-    # print('ccodesFromGeom() geom',geom)
     if geom['type'] == 'Point' and geom['coordinates'] == []:
         ccodes = []
         return ccodes
-        # print(ccodes)
     else:
         g = GEOSGeometry(str(geom))
         if g.geom_type == 'GeometryCollection':
@@ -993,8 +925,7 @@ def elapsed(delta):
 def bestParent(qobj, flag=False):
     # applicable for tgn only
     best = []
-    # print('qobj in bestParent',qobj)
-    # merge parent country/ies & parents
+
     if len(qobj['countries']) > 0 and qobj['countries'][0] != '':
         for c in qobj['countries']:
             best.append(parents.ccodes[0][c.upper()]['tgnlabel'])
@@ -1009,7 +940,6 @@ def bestParent(qobj, flag=False):
 # wikidata Qs from ccodes
 # TODO: consolidate hashes
 def getQ(arr, what):
-    # print('arr,what',arr, what)
     qids = []
     if what == 'ccodes':
         from datasets.static.hashes.parents import ccodes
@@ -1058,7 +988,6 @@ def fixName(toponym):
 # returns list of equivalent classes or types for {gaz}
 def classy(gaz, typeArray):
     import codecs, json
-    # print(typeArray)
     types = []
     finhash = codecs.open('../data/feature-classes.json', 'r', 'utf8')
     classes = json.loads(finhash.read())
@@ -1115,7 +1044,6 @@ def post_recon_update(ds, user, task):
         user_id=user.id
     )
     logobj.save()
-    print('post_recon_update() logobj', logobj)
 
 
 def status_emailer(ds, task_name):
@@ -1139,7 +1067,7 @@ def status_emailer(ds, task_name):
       <p>For those we had no attestation for, yours is the new 'seed'. In any case, <i>all</i> your records are now accessible via \ \
       the index search, database search, and API.</p><p>Best regards,</p<<p>i>The WHG Team</i></p>"
     except:
-        print('status_emailer() failed on dsid', ds.id, 'how come?')
+        ...
     subject, from_email = 'WHG dataset status update', 'whg@kgeographer.org'
     to_email = settings.EMAIL_STATUS_TO if task_name == 'wd' \
         else settings.EMAIL_STATUS_TO + [ds.owner.email]
@@ -1171,7 +1099,6 @@ class UpdateCountsView(View):
 
     @staticmethod
     def get(request):
-        # print('UpdateCountsView GET:',request.GET)
         """
         args in request.GET:
             [integer] ds_id: dataset id
@@ -1217,7 +1144,6 @@ class UpdateCountsView(View):
                 "pass3": pcounts['p3'],
                 "deferred": defcount
             }
-        # print(json.dumps(updates, indent=2))
         return JsonResponse(updates, safe=False)
 
 
@@ -1243,11 +1169,9 @@ def xl_upload(request):
 
         # getting all sheets
         sheets = wb.sheetnames
-        print(sheets)
 
         # getting a particular sheet by name out of many sheets
         ws = wb["Sheet1"]
-        print(ws)
 
         excel_data = list()
         # iterating over the rows and
