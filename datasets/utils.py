@@ -555,9 +555,8 @@ def validate_tsv(fn, ext):
     if len(list(set(req) - set(rpt['header']))) > 0:
         result['errors'].insert(0, 'Required columns missing or header malformed: ' +
                                 ', '.join(list(set(req) - set(rpt['header']))))
-    raise ValueError(f'{result["errors"]}')
     # TODO: filter cascade errors, e.g. caused by missing-cell
-    # return result
+    return result
 
 
 # nextgen goodtables, allows xlsx, ods but has issues

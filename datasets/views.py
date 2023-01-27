@@ -2187,7 +2187,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
 
     @transaction.atomic()
     def form_valid(self, form):
-        raise ValueError('Oops')
         data = form.cleaned_data
         context = {"format": data['format']}
         user = self.request.user
