@@ -56,7 +56,6 @@ from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 
 def emailer(subj, msg, from_addr, to_addr):
-    print('subj, msg, from_addr, to_addr', subj, msg, from_addr, to_addr)
     send_mail(
         subj, msg, from_addr, to_addr,
         fail_silently=False,
@@ -88,7 +87,6 @@ def link_uri(auth, id):
 
 
 def indexMatch(pid, hit_pid=None):
-    print('indexMatch(): pid ' + str(pid) + ' w/hit_pid ' + str(hit_pid))
     from elasticsearch7 import Elasticsearch
     es = Elasticsearch([{'host': 'localhost',
                          'port': 9200,
@@ -114,16 +112,12 @@ def indexMatch(pid, hit_pid=None):
 
     if hit_pid == None and not p_hits:
         # there was no match and place is not already indexed
-        print('making ' + str(pid) + ' a parent')
         new_obj['relation'] = {"name": "parent"}
 
         # increment whg_id
-        print('maxID at :109', maxID(es, idx))
         whg_id = maxID(es, idx) + 1
-        print('whg_id at :111', whg_id)
         # parents get an incremented _id & whg_id
         new_obj['whg_id'] = whg_id
-        print('new_obj', new_obj)
         # sys.exit()
 
         # add its own names to the suggest field
@@ -138,9 +132,7 @@ def indexMatch(pid, hit_pid=None):
             place.indexed = True
             place.save()
         except:
-            print('failed indexing (as parent)' + str(pid))
             pass
-        print('created parent:', pid, place.title)
     else:
         # get hit record in index
         q_hit = {"query": {"bool": {"must": [{"match": {"place_id": hit_pid}}]}}}
@@ -170,7 +162,6 @@ def indexMatch(pid, hit_pid=None):
             # index child
             es.index(index=idx, id=place.id, routing=1, body=json.dumps(new_obj))
             # count_kids +=1
-            print('added ' + str(place.id) + ' as child of ' + str(hit_pid))
 
             # add child's names to parent's searchy & suggest.input[] fields
             q_update = {"script": {
@@ -180,10 +171,9 @@ def indexMatch(pid, hit_pid=None):
             },
                 "query": {"match": {"_id": parent_whgid}}}
             es.update_by_query(index=idx, body=q_update, conflicts='proceed')
-            print('indexed? ', place.indexed)
-        except:
-            print('failed indexing ' + str(pid) + ' as child of ' + str(parent_whgid), new_obj)
-            pass
+        except Exception as e:
+            capture_exception(e)
+            raise ValueError(e)
 
 
 """
@@ -199,7 +189,6 @@ def indexMatch(pid, hit_pid=None):
 
 
 def indexMultiMatch(pid, matchlist):
-    print('indexMultiMatch(): pid ' + str(pid) + ' matches ' + str(matchlist))
     from elasticsearch7 import Elasticsearch, RequestError
     es = Elasticsearch([{'host': 'localhost',
                          'port': 9200,
@@ -247,12 +236,12 @@ def indexMultiMatch(pid, matchlist):
     # index the new record as child of winner
     try:
         es.index(index=idx, id=str(pid), routing=1, body=json.dumps(new_obj))
-    except RequestError as rq:
-        print('Error: ', rq.error, rq.info)
+    except Exception as e:
+        capture_exception(e)
+        raise ValueError(e)
 
     # demote others
     for _id in demoted:
-        print('find & demote whg_id', _id)
         # get index record stuff, to be altered then re-indexed
         # ES won't allow altering parent/child relations directly
         q_demote = {"query": {"bool": {"must": [{"match": {"whg_id": _id}}]}}}
@@ -279,8 +268,7 @@ def indexMultiMatch(pid, matchlist):
         try:
             es.update(idx, winner['whg_id'], body=q)
         except RequestError as rq:
-            print('q_updatewinner failed (whg_id)', winner['whg_id'])
-            print('Error: ', rq.error, rq.info)
+            raise ValueError(rq)
 
         from copy import deepcopy
         newsrcd = deepcopy(srcd)
@@ -294,9 +282,8 @@ def indexMultiMatch(pid, matchlist):
         try:
             es.delete('whg', _id)
             es.index(index='whg', id=_id, body=newsrcd, routing=1)
-        except RequestError as rq:
-            print('reindex failed (demoted)', d)
-            print('Error: ', rq.error, rq.info)
+        except RequestError as e:
+            raise ValueError(e)
 
         # re-assign parent for kids of all/any demoted parents
         if len(addkids) > 0:
@@ -330,7 +317,6 @@ def review(request, pk, tid, passnum):
     # filter place records by passnum for those with unreviewed hits on this task
     # if request passnum is complete, increment
     cnt_pass = Hit.objects.values('place_id').filter(task_id=tid, reviewed=False, query_pass=passnum).count()
-    print('in review()', {'auth': auth, 'ds': ds, 'task': task})
     # TODO: refactor this awful mess; controls whether PASS appears in review dropdown
     cnt_pass0 = Hit.objects.values('place_id').filter(
         task_id=tid, reviewed=False, query_pass='pass0').count()
@@ -355,7 +341,6 @@ def review(request, pk, tid, passnum):
     else:
         # all unreviewed
         hitplaces = Hit.objects.values('place_id').filter(task_id=tid, reviewed=False)
-    # print('review() hitplaces', [p['place_id'] for p in hitplaces])
 
     # set review page returned
     if auth in ['whg', 'idx']:
@@ -395,16 +380,13 @@ def review(request, pk, tid, passnum):
     # handle request for singleton (e.g. deferred from browse table)
     # if 'pid' in request.GET, bypass per-pass sequential loading
     if pid:
-        print('pid in URI, just show that', pid)
         # get its index and add 1 to get page
         page = (*record_list,).index(Place.objects.get(id=pid)) + 1
-        print('pagenum', page)
     else:
         # default action, sequence of all pages for the pass
         page = 1 if not request.GET.get('page') else \
             request.GET.get('page')
     records = paginator.get_page(page)
-    count = len(record_list)
 
     # get hits for this record
     placeid = records[0].id
@@ -414,10 +396,8 @@ def review(request, pk, tid, passnum):
         raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid, query_pass=passnum).order_by('-score')
     else:
         # accessioning -> get all regardless of pass
-        # raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid).order_by('-score')
         raw_hits = Hit.objects.filter(place_id=placeid, task_id=tid).order_by('-score')
 
-    # print('raw_hits', [h.json['titles'] for h in raw_hits])
     # ??why? get pass contents for all of a place's hits
     passes = list(set([item for sublist in [[s['pass'] for s in h.json['sources']] for h in raw_hits]
                        for item in sublist])) if auth in ['whg', 'idx'] else None
@@ -427,8 +407,8 @@ def review(request, pk, tid, passnum):
     for r in place.ccodes:
         try:
             countries.append(cchash[0][r.upper()]['gnlabel'] + ' (' + cchash[0][r.upper()]['tgnlabel'] + ')')
-        except:
-            pass
+        except Exception as e:
+            raise ValueError(e)
 
     # prep some context
     context = {
@@ -449,7 +429,6 @@ def review(request, pk, tid, passnum):
         'deferred': True if passnum == 'def' else False,
     }
 
-    # print('raw_hits at formset', [h.json['titles'] for h in raw_hits])
     # build formset from hits, add to context
     HitFormset = modelformset_factory(
         Hit,
@@ -459,10 +438,7 @@ def review(request, pk, tid, passnum):
     context['formset'] = formset
     method = request.method
 
-    # GET -> just display
-    if method == 'GET':
-        print('review() GET, just displaying next')
-    elif method == 'POST':
+    if method == 'POST':
         # process match/no match choices made by save in review or accession page
         # NB very different cases.
         #   For wikidata review, act on each hit considered (new place_geom and place_link records if matched)
@@ -476,7 +452,6 @@ def review(request, pk, tid, passnum):
             return redirect('/datasets/' + str(pk) + '/review/' + task.task_id + '/' + passnum)
         elif formset.is_valid():
             hits = formset.cleaned_data
-            # print('formset valid', hits)
             matches = 0
             matched_for_idx = []  # for accession
             # are any of the listed hits matches?
@@ -484,12 +459,10 @@ def review(request, pk, tid, passnum):
                 hit = hits[x]['id']
                 # is this hit a match?
                 if hits[x]['match'] not in ['none']:
-                    # print('json of matched hit/cluster (in review())', hits[x]['json'])
                     matches += 1
                     # if wd or tgn, write place_geom, place_link record(s) now
                     # IF someone didn't just review it!
                     if task.task_name[6:] in ['wdlocal', 'wd', 'tgn']:
-                        # print('task.task_name', task.task_name)
                         hasGeom = 'geoms' in hits[x]['json'] and len(hits[x]['json']['geoms']) > 0
                         # create place_geom records if 'accept geometries' was checked
                         if kwargs['aug_geom'] == 'on' and hasGeom \
@@ -523,27 +496,22 @@ def review(request, pk, tid, passnum):
                                         if hits[x]['authority'] != 'whg' else hits[x]['json']['place_id'])
                                 }
                             )
-                            print('created place_link instance:', link)
 
                         # create multiple PlaceLink records (e.g. Wikidata)
                         # TODO: filter duplicates
                         if 'links' in hits[x]['json']:
                             for l in hits[x]['json']['links']:
-                                # print('l in links',l)
                                 authid = re.search("\: ?(.*?)$", l).group(1)
-                                print('authid', authid)
                                 if authid not in place.authids:
-                                    link = PlaceLink.objects.create(
+                                    PlaceLink.objects.create(
                                         place=place,
                                         task_id=tid,
                                         src_id=place.src_id,
                                         jsonb={
                                             "type": hits[x]['match'],
-                                            # "identifier": authid.strip()
                                             "identifier": l.strip()
                                         }
                                     )
-                                    # print('PlaceLink record created',link.jsonb)
                                     # update totals
                                     ds.numlinked = ds.numlinked + 1 if ds.numlinked else 1
                                     ds.total_links = ds.total_links + 1
@@ -557,25 +525,18 @@ def review(request, pk, tid, passnum):
                                                 'score': hits[x]['json']['score'],
                                                 'links': links_count})
                     # TODO: informational lookup on whg index?
-                    # elif task.task_name == 'align_whg':
-                    #   print('align_whg (non-accessioning) DOING NOTHING (YET)')
                 # in any case, flag hit as reviewed...
                 hitobj = get_object_or_404(Hit, id=hit.id)
                 hitobj.reviewed = True
                 hitobj.save()
-                print('hit # ' + str(hitobj.id) + ' flagged reviewed')
 
             # handle accessioning match results
             if len(matched_for_idx) == 0 and task.task_name == 'align_idx':
                 # no matches during accession, index as seed (parent
-                print('no accession matches, index ' + str(place_post.id) + ' as seed (parent)')
-                print('maxID() in review()', maxID(es, 'whg'))
                 indexMatch(str(place_post.id))
                 place_post.indexed = True
                 place_post.save()
             elif len(matched_for_idx) == 1:
-                print('one accession match, make record ' + str(place_post.id) + ' child of hit ' + str(
-                    matched_for_idx[0]))
                 indexMatch(str(place_post.id), matched_for_idx[0]['pid'])
                 place_post.indexed = True
                 place_post.save()
@@ -593,22 +554,14 @@ def review(request, pk, tid, passnum):
                 ds.ds_status = 'wd-complete'
                 ds.save()
                 status_emailer(ds, 'wd')
-                print('sent status email')
             elif auth == 'idx' and ds.recon_status['idx'] == 0:
                 ds.ds_status = 'indexed'
                 ds.save()
                 status_emailer(ds, 'idx')
-                print('sent status email')
 
-            print('review_field', review_field)
-            setattr(place_post, review_field, 1)
             place_post.save()
 
             return redirect('/datasets/' + str(pk) + '/review/' + tid + '/' + passnum + '?page=' + str(int(page)))
-        else:
-            print('formset is NOT valid. errors:', formset.errors)
-            print('formset data:', formset.data)
-    # print('context', context)
     return render(request, 'datasets/' + review_page, context=context)
 
 
@@ -633,7 +586,6 @@ def write_wd_pass0(request, tid):
         query_pass='pass0',
         reviewed=False
     )
-    # print('writing '+str(len(hits))+' pass0 matched records for', ds.label)
     for h in hits:
         hasGeom = 'geoms' in h.json and len(h.json['geoms']) > 0
         hasLinks = 'links' in h.json and len(h.json['links']) > 0
@@ -656,7 +608,6 @@ def write_wd_pass0(request, tid):
                         "coordinates": g['coordinates']
                     }
                 )
-            print('created place_geom instance in write_wd_pass0', pg)
 
         # LINKS
         link_counter = 0
@@ -672,7 +623,6 @@ def write_wd_pass0(request, tid):
                     "identifier": link_uri(task.task_name, h.authrecord_id)
                 }
             )
-            print('created wd place_link instance:', link)
 
         # create link for each wikidata concordance, if any
         if hasLinks:
@@ -681,11 +631,10 @@ def write_wd_pass0(request, tid):
             for l in h.json['links']:
                 link_counter += 1
                 authid = re.search("\:?(.*?)$", l).group(1)
-                print(authid)
                 # TODO: same no-dupe logic in review()
                 # don't write duplicates
                 if authid not in authids:
-                    link = PlaceLink.objects.create(
+                    PlaceLink.objects.create(
                         place=place,
                         task_id=tid,
                         src_id=place.src_id,
@@ -694,7 +643,6 @@ def write_wd_pass0(request, tid):
                             "identifier": authid
                         }
                     )
-            print('created ' + str(len(h.json['links'])) + ' place_link instances')
 
         # update dataset totals for metadata page
         ds.numlinked = len(set(PlaceLink.objects.filter(place_id__in=ds.placeids).values_list('place_id', flat=True)))
@@ -741,10 +689,6 @@ def mehdi_er(d1, d2):
     m_csv = tsv_2_csv(m_dataset)
     p_csv = tsv_2_csv(p_dataset)
 
-    print(m_csv, p_csv)
-    # m_csv = '/Users/macbookpro/Downloads/BT.csv'
-    # p_csv = '/Users/macbookpro/Downloads/BT.csv'
-
     files = {
         'first_csv': open(m_csv, 'rb'),
         'second_csv': open(p_csv, 'rb')
@@ -756,25 +700,19 @@ def mehdi_er(d1, d2):
 
 def process_er(url):
     c = pd.read_csv(url)
-    print(c)
 
 
 def ds_recon(request, pk):
     ds = get_object_or_404(Dataset, id=pk)
     # TODO: handle multipolygons from "#area_load" and "#area_draw"
     user = request.user
-    context = {"dataset": ds.title}
 
-    if request.method == 'GET':
-        print('ds_recon() GET')
-    elif request.method == 'POST' and request.POST:
-        print('ds_recon() request.POST:', request.POST)
+    if request.method == 'POST' and request.POST:
         auth = request.POST['recon']
         if auth == 'match_data':
             m_dataset = request.POST['m_dataset']
             p_dataset = request.POST['p_dataset']
             csv_url, status_code = mehdi_er(m_dataset, p_dataset)
-            context = {'csv_url': csv_url}
             if status_code > 200:
                 return HttpResponse('Error with Datasets, check again')
             process_er(csv_url)
@@ -799,15 +737,10 @@ def ds_recon(request, pk):
                 tid = previous.first().task_id
                 task_archive(tid, prior)
                 scope = 'unreviewed'
-                print('recon(): archived previous task')
-                print('ds_recon(): links & geoms were ' + ('kept' if prior == 'keep' else 'zapped'))
         else:
             # no existing task, submit all rows
-            print('ds_recon(): no previous, submitting all')
             scope = 'all'
 
-        print('ds_recon() scope', scope)
-        print('ds_recon() auth', auth)
         # which task? wdlocal, tgn, idx, whg (future)
         func = eval('align_' + auth)
 
@@ -821,7 +754,6 @@ def ds_recon(request, pk):
 
         # check Celery service
         if not celeryUp():
-            print('Celery is down :^(')
             emailer('Celery is down :^(',
                     'if not celeryUp() -- look into it, bub!',
                     'whg@kgeographer.org',
@@ -834,7 +766,7 @@ def ds_recon(request, pk):
         # initiate celery/redis task
         # NB 'func' resolves to align_wdlocal() or align_idx() or align_tgn()
         try:
-            result = func.delay(
+            func.delay(
                 ds.id,
                 ds=ds.id,
                 dslabel=ds.label,
@@ -848,9 +780,8 @@ def ds_recon(request, pk):
             messages.add_message(request, messages.INFO,
                                  "<span class='text-danger'>Your reconciliation task is under way.</span><br/>When complete, you will receive an email and if successful, results will appear below (you may have to refresh screen). <br/>In the meantime, you can navigate elsewhere.")
             return redirect('/datasets/' + str(ds.id) + '/reconcile')
-        except:
-            print('failed: align_' + auth)
-            print(sys.exc_info())
+        except Exception as e:
+            capture_exception(e)
             messages.add_message(request, messages.INFO,
                                  "Sorry! Reconciliation services appear to be down. The system administrator has been notified.<br/>" + str(
                                      sys.exc_info()))
@@ -875,14 +806,12 @@ def task_delete(request, tid, scope="foo"):
     hits = Hit.objects.all().filter(task_id=tid)
     tr = get_object_or_404(TaskResult, task_id=tid)
     dsid = tr.task_args[1:-1]
-    ds = get_object_or_404(Dataset, pk=dsid)
     auth = tr.task_name[6:]  # wdlocal, idx
     # only the places that had hit(s) in this task
     places = Place.objects.filter(id__in=[h.place_id for h in hits])
     # links and geometry added by a task have the task_id
     placelinks = PlaceLink.objects.all().filter(task_id=tid)
     placegeoms = PlaceGeom.objects.all().filter(task_id=tid)
-    print('task_delete()', {'tid': tr, 'dsid': dsid, 'auth': auth})
 
     # reset Place.review_{auth} to null
     for p in places:
@@ -907,8 +836,6 @@ def task_delete(request, tid, scope="foo"):
 
     # delete dataset from index
     # undoes any acceessioning work
-    # if auth in ['whg', 'idx']:
-    #   removeDatasetFromIndex('whg', dsid)
     # set status back to reconciling
     ds = Dataset.objects.get(id=dsid)
     ds.ds_status = 'reconciling'
@@ -932,7 +859,6 @@ def task_archive(tid, prior):
     dsid = tr.task_args[1:-1]
     auth = tr.task_name[6:]
     places = Place.objects.filter(id__in=[h.place_id for h in hits])
-    print('task_archive()', {'tid': tr, 'dsid': dsid, 'auth': auth})
 
     # reset Place.review_{auth} to null
     for p in places:
@@ -965,7 +891,6 @@ def task_archive(tid, prior):
 
 
 def collab_add(request, dsid, v):
-    print('collab_add() request, dsid', request, dsid)
     try:
         uid = get_object_or_404(User, username=request.POST['username']).id
         role = request.POST['role']
@@ -977,7 +902,6 @@ def collab_add(request, dsid, v):
             return redirect('/datasets/' + str(dsid) + '/collab')
         else:
             return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
-    print('collab_add():', request.POST['username'], role, dsid, uid)
     DatasetUser.objects.create(user_id_id=uid, dataset_id_id=dsid, role=role)
     if v == '1':
         return redirect('/datasets/' + str(dsid) + '/collab')
@@ -992,7 +916,6 @@ def collab_add(request, dsid, v):
 
 
 def collab_delete(request, uid, dsid, v):
-    print('collab_delete() request, uid, dsid', request, uid, dsid)
     get_object_or_404(DatasetUser, user_id_id=uid, dataset_id_id=dsid).delete()
     if v == '1':
         return redirect('/datasets/' + str(dsid) + '/collab')
@@ -1012,9 +935,6 @@ def dataset_file_delete(ds):
         ffn = 'media/' + f.file.name
         if os.path.exists(ffn):
             os.remove(ffn)
-            print('zapped file ' + ffn)
-        else:
-            print('did not find file ' + ffn)
 
 
 """
@@ -1028,7 +948,6 @@ def dataset_file_delete(ds):
 
 def update_rels_tsv(pobj, row):
     header = list(row.keys())
-    print('update_rels_tsv(): pobj, row, header', pobj, row, header)
     src_id = row['id']
     title = row['title']
     # for PlaceName insertion, strip anything in parens
@@ -1039,7 +958,6 @@ def update_rels_tsv(pobj, row):
         if 'variants' in header else []
     types = [x.strip() for x in row['types'].split(';')] \
         if 'types' in header and str(row['types']) not in ('nan', '') else []
-    # aat_types = [x.strip() for x in row['aat_types'].split(';')] \
     aat_types = [x.strip() for x in row['aat_types'].split(';')] \
         if 'aat_types' in header and str(row['aat_types']) not in ('nan', '') else []
     parent_name = row['parent_name'] if 'parent_name' in header else ''
@@ -1079,7 +997,6 @@ def update_rels_tsv(pobj, row):
                 new_name.jsonb['lang'] = haslang.group(1)
             objs['PlaceName'].append(new_name)
 
-    #
     # PlaceType()
     # TODO: parse t
     if len(types) > 0:
@@ -1096,7 +1013,6 @@ def update_rels_tsv(pobj, row):
                            }
                 ))
 
-    #
     # PlaceGeom()
     # TODO: test geometry type or force geojson
     if len(coords) > 0:
@@ -1106,10 +1022,7 @@ def update_rels_tsv(pobj, row):
     elif 'geowkt' in header and row['geowkt'] not in ['', None]:  # some rows no geom
         geom = parse_wkt(row['geowkt'])
 
-    print('new geom', geom)
-
     def trunc4(val):
-        print('val in trunc4()', val)
         return round(val, 4)
 
     new_coords = list(map(trunc4, list(geom['coordinates'])))
@@ -1139,7 +1052,6 @@ def update_rels_tsv(pobj, row):
                         jsonb={"type": "closeMatch", "identifier": m}
                     ))
 
-    #
     # PlaceRelated()
     if parent_name != '':
         objs['PlaceRelated'].append(
@@ -1152,7 +1064,6 @@ def update_rels_tsv(pobj, row):
                     "label": parent_name}
             ))
 
-    #
     # PlaceWhen()
     # timespans[{start{}, end{}}], periods[{name,id}], label, duration
     objs['PlaceWhen'].append(
@@ -1165,7 +1076,7 @@ def update_rels_tsv(pobj, row):
                     "end": {"latest": pobj.minmax[1]}}]
             }
         ))
-    #
+
     # PlaceDescription()
     # @id, value, lang
     if description != '':
@@ -1178,34 +1089,16 @@ def update_rels_tsv(pobj, row):
                 }
             ))
 
-    # what came from this row
-    print('COUNTS:')
-    print('PlaceName:', len(objs['PlaceName']))
-    print('PlaceType:', len(objs['PlaceType']))
-    print('PlaceGeom:', len(objs['PlaceGeom']))
-    print('PlaceLink:', len(objs['PlaceLink']))
-    print('PlaceRelated:', len(objs['PlaceRelated']))
-    print('PlaceWhen:', len(objs['PlaceWhen']))
-    print('PlaceDescription:', len(objs['PlaceDescription']))
-    print('max places.id', )
-
     # TODO: update place.fclasses, place.minmax, place.timespans
 
     # bulk_create(Class, batch_size=n) for each
     PlaceName.objects.bulk_create(objs['PlaceName'], batch_size=10000)
-    print('names done')
     PlaceType.objects.bulk_create(objs['PlaceType'], batch_size=10000)
-    print('types done')
     PlaceGeom.objects.bulk_create(objs['PlaceGeom'], batch_size=10000)
-    print('geoms done')
     PlaceLink.objects.bulk_create(objs['PlaceLink'], batch_size=10000)
-    print('links done')
     PlaceRelated.objects.bulk_create(objs['PlaceRelated'], batch_size=10000)
-    print('related done')
     PlaceWhen.objects.bulk_create(objs['PlaceWhen'], batch_size=10000)
-    print('whens done')
     PlaceDescription.objects.bulk_create(objs['PlaceDescription'], batch_size=10000)
-    print('descriptions done')
 
 
 """
@@ -1221,16 +1114,10 @@ def ds_update(request):
         dsid = request.POST['dsid']
         ds = get_object_or_404(Dataset, id=dsid)
         file_format = request.POST['format']
-        # keep previous recon/review results?
-        keepg = request.POST['keepg']
-        keepl = request.POST['keepl']
-
-        # print('keepg,type in ds_update() request',keepg,type(keepg))
 
         # compare_data {'compare_result':{}}
         compare_data = json.loads(request.POST['compare_data'])
         compare_result = compare_data['compare_result']
-        # print('compare_data from ds_compare', compare_data)
 
         # tempfn has .tsv or .jsonld extension from validation step
         tempfn = compare_data['tempfn']
@@ -1241,7 +1128,6 @@ def ds_update(request):
         # rename file if already exists in user area
         if Path('media/' + filename_new).exists():
             fn = os.path.splitext(filename_new)
-            # filename_new=filename_new[:-4]+'_'+tempfn[-11:-4]+filename_new[-4:]
             filename_new = fn[0] + '_' + tempfn[-11:-4] + fn[1]
 
         # user said go...copy tempfn to media/{user} folder
@@ -1255,8 +1141,6 @@ def ds_update(request):
             rev=rev_cur + 1,
             format=file_format,
             # TODO: accept csv, track delimiter
-            # delimiter = result['delimiter'] if "delimiter" in result.keys() else "n/a",
-            # df_status = 'updating',
             upload_date=datetime.date.today(),
             header=compare_result['header_new'],
             numrows=compare_result['count_new']
@@ -1267,14 +1151,10 @@ def ds_update(request):
         # cur: user_whgadmin/diamonds135.tsv
         # new: user_whgadmin/diamonds135_rev2.tsv
         if file_format == 'delimited':
-            # adf = pd.read_csv('media/user_whgadmin/diamonds135.tsv', delimiter='\t',dtype={'id':'str','ccodes':'str'})
-            # bdf = pd.read_csv('/var/folders/f4/x09rdl7n3lg7r7gwt1n3wjsr0000gn/T/tmpcfees9hd.tsv', delimiter='\t',dtype={'id':'str','ccodes':'str'})
             adf = pd.read_csv('media/' + compare_data['filename_cur'], delimiter='\t',
                               dtype={'id': 'str', 'ccodes': 'str'})
             bdf = pd.read_csv(filepath, delimiter='\t')
             bdf = bdf.astype({"id": str, "ccodes": str})
-            print('reopened old file, # lines:', len(adf))
-            print('reopened new file, # lines:', len(bdf))
             ids_a = adf['id'].tolist()
             ids_b = bdf['id'].tolist()
             delete_srcids = [str(x) for x in (set(ids_a) - set(ids_b))]
@@ -1305,13 +1185,9 @@ def ds_update(request):
             for index, row in bdf.iterrows():
                 # make 3 dicts: all; for Places; for PlaceXxxxs
                 rd = row.to_dict()
-                print('rd in ds_update', rd)
                 # rdp = {key:rd[key][0] for key in place_fields}
                 rdp = {key: rd[key] for key in place_fields}
-                # look for corresponding current place
-                # p = places.filter(src_id='1.0').first()
                 p = places.filter(src_id=rdp['id']).first()
-                print('rdp (new row)', rdp)
                 start = int(rdp['start']) if 'start' in rdp else None
                 end = int(rdp['end']) if 'end' in rdp and str(rdp['end']) != 'nan' else start
                 minmax_new = [start, end] if start else [None]
@@ -1337,13 +1213,11 @@ def ds_update(request):
                     )
                     newpl.save()
                     pobj = newpl
-                    # print('new place, related:', newpl, rdrels)
 
                 # TODO: needs to update, not add
                 # create related records (place_name, etc)
                 # pobj is either a current (now updated) place or entirely new
                 # rd is row dict
-                print('pobj,rd for add_rels_tsv()', pobj, rd)
                 update_rels_tsv(pobj, rd)
 
             # update numrows
@@ -1378,13 +1252,6 @@ def ds_update(request):
                 if len(rows_replace) > 0:
                     replaceInIndex(es, idx, rows_replace)
 
-                # process new
-                # if len(rows_add) > 0:
-                # notify need to reconcile & accession them
-
-            else:
-                print('not indexed, that is all')
-
             # write log entry
             Log.objects.create(
                 # category, logtype, "timestamp", subtype, note, dataset_id, user_id
@@ -1397,7 +1264,7 @@ def ds_update(request):
 
             return JsonResponse(result, safe=False)
         elif file_format == 'lpf':
-            print("ds_update for lpf; doesn't get here yet")
+            ...
 
 
 """
@@ -1410,8 +1277,6 @@ returns json result object
 
 def ds_compare(request):
     if request.method == 'POST':
-        print('request.POST', request.POST)
-        print('request.FILES', request.FILES)
         dsid = request.POST['dsid']  # 586 for diamonds
         user = request.user.username
         format = request.POST['format']
@@ -1421,8 +1286,6 @@ def ds_compare(request):
         ds_status = ds.status_idx
 
         # how many exist, whether from recon or original?
-        # count_geoms = PlaceGeom.objects.filter(place_id__in=ds.placeids,task_id__isnull=False).count()
-        # count_links = PlaceLink.objects.filter(place_id__in=ds.placeids,task_id__isnull=False).count()
         count_geoms = PlaceGeom.objects.filter(place_id__in=ds.placeids).count()
         count_links = PlaceLink.objects.filter(place_id__in=ds.placeids).count()
 
@@ -1444,8 +1307,6 @@ def ds_compare(request):
         finally:
             os.close(tempf)
 
-        print('tempfn,filename_cur,file_new.name', tempfn, filename_cur, file_new.name)
-
         # format validation
         if format == 'delimited':
             # goodtable wants filename only
@@ -1455,7 +1316,6 @@ def ds_compare(request):
             # TODO: feed tempfn only?
             # TODO: accept json-lines; only FeatureCollections ('coll') now
             vresult = validate_lpf(tempfn, 'coll')
-        print('format, vresult:', format, vresult)
 
         # if errors, parse & return to modal
         # which expects {validation_result{errors['','']}}
@@ -1482,7 +1342,6 @@ def ds_compare(request):
             "count_geoms": count_geoms,
             "count_indexed": ds_status['idxcount'],
         }
-        print('count_geoms in ds_compare:894', count_geoms)
         # perform comparison
         fn_a = 'media/' + filename_cur
         fn_b = tempfn_new
@@ -1507,10 +1366,8 @@ def ds_compare(request):
             }
         # TODO: process LP format, collections + json-lines
         elif format == 'lpf':
-            print('need to compare lpf files:', fn_a, fn_b)
             comparison['compare_result'] = "it's lpf...tougher row to hoe"
 
-        print('comparison', comparison)
         # back to calling modal
         return JsonResponse(comparison, safe=False)
 
@@ -1529,25 +1386,18 @@ def ds_insert_lpf(request, pk):
     # latest file
     dsf = ds.files.all().order_by('-rev')[0]
     uribase = ds.uri_base
-    print('new dataset, uri_base', ds.label, uribase)
 
     # TODO: lpf can get big; support json-lines
 
     # insert only if empty
     dbcount = Place.objects.filter(dataset=ds.label).count()
-    print('dbcount', dbcount)
 
     if dbcount == 0:
         errors = []
         try:
             infile = dsf.file.open(mode="r")
-            print('ds_insert_lpf() for dataset', ds)
-            print('ds_insert_lpf() request.GET, infile', request.GET, infile)
             with infile:
                 jdata = json.loads(infile.read())
-
-                print('count of features', len(jdata['features']))
-                # print('0th feature',jdata['features'][0])
 
                 for feat in jdata['features']:
                     # create Place, save to get id, then build associated records for each
@@ -1567,7 +1417,6 @@ def ds_insert_lpf(request, pk):
                         if geojson:
                             # a GeometryCollection
                             ccodes = ccodesFromGeom(geojson)
-                            print('ccodes', ccodes)
                         else:
                             ccodes = []
                     else:
@@ -1590,10 +1439,9 @@ def ds_insert_lpf(request, pk):
                             timespans=datesobj['intervals']
                         )
                         newpl.save()
-                        print('new place: ', newpl.title)
-                    except:
-                        print('failed id' + title + 'datesobj: ' + datesobj)
-                        print(sys.exc_info())
+                    except Exception as e:
+                        capture_exception(e)
+                        raise ValueError(e)
 
                     # PlaceName: place,src_id,toponym,task_id,
                     # jsonb:{toponym, lang, citation[{label, year, @id}], when{timespans, ...}}
@@ -1609,7 +1457,6 @@ def ds_insert_lpf(request, pk):
                             ))
 
                     # PlaceType: place,src_id,task_id,jsonb:{identifier,label,src_label}
-                    # try:
                     if 'types' in feat.keys():
                         fclass_list = []
                         for t in feat['types']:
@@ -1620,8 +1467,6 @@ def ds_insert_lpf(request, pk):
                                 fclass_list.append(fc)
                             else:
                                 fc = FEATURE_CLASSES[3][0]
-                            print('from feat[types]:', t)
-                            print('PlaceType record newpl,newpl.src_id,t,fc', newpl, newpl.src_id, t, fc)
                             objs['PlaceTypes'].append(PlaceType(
                                 place=newpl,
                                 src_id=newpl.src_id,
@@ -1645,7 +1490,6 @@ def ds_insert_lpf(request, pk):
                     if geojson and geojson['type'] == 'GeometryCollection':
                         # for g in feat['geometry']['geometries']:
                         for g in geojson['geometries']:
-                            # print('from feat[geometry]:',g)
                             objs['PlaceGeoms'].append(PlaceGeom(
                                 place=newpl,
                                 src_id=newpl.src_id,
@@ -1663,7 +1507,6 @@ def ds_insert_lpf(request, pk):
                     # PlaceLink: place,src_id,task_id,jsonb:{type,identifier}
                     if 'links' in feat.keys() and len(feat['links']) > 0:
                         countlinked += 1  # record has *any* links
-                        # print('countlinked',countlinked)
                         for l in feat['links']:
                             total_links += 1  # record has n links
                             objs['PlaceLinks'].append(PlaceLink(
@@ -1693,9 +1536,7 @@ def ds_insert_lpf(request, pk):
 
                     # throw errors into user message
                     def raiser(model, e):
-                        print('Bulk load for ' + model + ' failed on', newpl)
                         errors.append({"field": model, "error": e})
-                        print('error', e)
                         raise DataError
 
                     # create related objects
@@ -1706,49 +1547,49 @@ def ds_insert_lpf(request, pk):
 
                     try:
                         PlaceType.objects.bulk_create(objs['PlaceTypes'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Type', e)
 
                     try:
                         PlaceWhen.objects.bulk_create(objs['PlaceWhens'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('When', e)
 
                     try:
                         PlaceGeom.objects.bulk_create(objs['PlaceGeoms'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Geom', e)
 
                     try:
                         PlaceLink.objects.bulk_create(objs['PlaceLinks'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Link', e)
 
                     try:
                         PlaceRelated.objects.bulk_create(objs['PlaceRelated'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Related', e)
 
                     try:
                         PlaceDescription.objects.bulk_create(objs['PlaceDescriptions'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Description', e)
 
                     try:
                         PlaceDepiction.objects.bulk_create(objs['PlaceDepictions'])
-                    except DataError as de:
+                    except DataError as e:
                         raiser('Depiction', e)
 
                     # TODO: compute newpl.ccodes (if geom), newpl.fclasses, newpl.minmax
                     # something failed in *any* Place creation; delete dataset
 
-                print('new dataset:', ds.__dict__)
                 infile.close()
 
             return ({"numrows": countrows,
                      "numlinked": countlinked,
                      "total_links": total_links})
-        except:
+        except Exception as e:
+            capture_exception(e)
             # drop the (empty) database
             # ds.delete()
             # email to user, admin
@@ -1762,10 +1603,9 @@ def ds_insert_lpf(request, pk):
             # return message to 500.html
             # messages.error(request, "Database insert failed, but we don't know why. The WHG team has been notified and will follow up by email to <b>"+user.username+'</b> ('+user.email+')')
             # return redirect(request.GET.get('from'))
-            return HttpResponseServerError()
+            raise ValueError(e)
 
     else:
-        print('insert_ skipped, already in')
         messages.add_message(request, messages.INFO, 'data is uploaded, but problem displaying dataset page')
         return redirect('/mydata')
 
@@ -1779,18 +1619,15 @@ def ds_insert_lpf(request, pk):
 
 
 def ds_insert_tsv(request, pk):
-    print('test')
     import csv, re
     csv.field_size_limit(300000)
     ds = get_object_or_404(Dataset, id=pk)
     user = request.user
-    print('ds_insert_tsv()', ds)
     # retrieve just-added file
     dsf = ds.files.all().order_by('-rev')[0]
 
     # insert only if empty
     dbcount = Place.objects.filter(dataset=ds.label).count()
-    print('dbcount', dbcount)
 
     if dbcount == 0:
         try:
@@ -1800,11 +1637,9 @@ def ds_insert_tsv(request, pk):
             infile.seek(0)
             header = next(reader, None)
             header = [col.lower().strip() for col in header]
-            print('header.lower()', [col.lower() for col in header])
 
             # strip BOM character if exists
             header[0] = header[0][1:] if '\ufeff' in header[0] else header[0]
-            print('header', header)
 
             objs = {"PlaceName": [], "PlaceType": [], "PlaceGeom": [], "PlaceWhen": [],
                     "PlaceLink": [], "PlaceRelated": [], "PlaceDescription": []}
@@ -1815,7 +1650,6 @@ def ds_insert_tsv(request, pk):
             total_links = 0
             for r in reader:
                 # build attributes for new Place instance
-                print(1)
                 src_id = r[header.index('id')]
                 title = r[header.index('title')].replace("' ", "'")  # why?
                 # strip anything in parens for title only
@@ -1866,7 +1700,6 @@ def ds_insert_tsv(request, pk):
 
                 description = r[header.index('description')] \
                     if 'description' in header else ''
-                # print('description (src_id)', description)
 
                 # create new Place object
                 # TODO: generate fclasses
@@ -1880,12 +1713,6 @@ def ds_insert_tsv(request, pk):
                 )
                 newpl.save()
                 countrows += 1
-                print(2)
-                # build associated objects and add to arrays #
-                #
-                # PlaceName(); title, then variants
-                #
-                print(objs['PlaceName'])
                 objs['PlaceName'].append(
                     PlaceName(
                         place=newpl,
@@ -1900,10 +1727,8 @@ def ds_insert_tsv(request, pk):
                         try:
                             haslang = re.search("@(.*)$", v.strip())
                             if len(v.strip()) > 200:
-                                print(v.strip())
                                 pass
                             else:
-                                print('variant for', newpl.id, v)
                                 new_name = PlaceName(
                                     place=newpl,
                                     src_id=src_id,
@@ -1914,15 +1739,12 @@ def ds_insert_tsv(request, pk):
                                     new_name.jsonb['lang'] = haslang.group(1)
 
                                 objs['PlaceName'].append(new_name)
-                        except:
-                            print(3)
-                            print('error on variant', sys.exc_info())
-                            print('error on variant for newpl.id', newpl.id, v)
+                        except Exception as e:
+                            raise ValueError(e)
 
                 #
                 # PlaceType()
                 #
-                print('3 coold')
                 if len(types) > 0:
                     fclass_list = []
                     for i, t in enumerate(types):
@@ -1941,10 +1763,6 @@ def ds_insert_tsv(request, pk):
                     newpl.fclasses = fclass_list
                     newpl.save()
 
-                #
-                # PlaceGeom()
-                #
-                print(3)
                 if geojson:
                     objs['PlaceGeom'].append(
                         PlaceGeom(
@@ -1954,7 +1772,6 @@ def ds_insert_tsv(request, pk):
                             , geom=GEOSGeometry(json.dumps(geojson))
                         ))
 
-                #
                 # PlaceWhen()
                 # via parsedates_tsv(): {"timespans":[{start{}, end{}}]}
                 if start != '':
@@ -1966,9 +1783,7 @@ def ds_insert_tsv(request, pk):
                             jsonb=datesobj
                         ))
 
-                #
                 # PlaceLink() - all are closeMatch
-                #
                 if len(matches) > 0:
                     countlinked += 1
                     for m in matches:
@@ -1980,9 +1795,7 @@ def ds_insert_tsv(request, pk):
                                 jsonb={"type": "closeMatch", "identifier": m}
                             ))
 
-                #
                 # PlaceRelated()
-                #
                 if parent_name != '':
                     objs['PlaceRelated'].append(
                         PlaceRelated(
@@ -1994,7 +1807,6 @@ def ds_insert_tsv(request, pk):
                                 "label": parent_name}
                         ))
 
-                #
                 # PlaceDescription()
                 # @id, value, lang
                 if description != '':
@@ -2003,34 +1815,25 @@ def ds_insert_tsv(request, pk):
                             place=newpl,
                             src_id=src_id,
                             jsonb={
-                                # "@id": "", "value":description, "lang":""
                                 "value": description
                             }
                         ))
 
-            print(4)
-            # bulk_create(Class, batch_size=n) for each
-            print(objs)
             PlaceName.objects.bulk_create(objs['PlaceName'], batch_size=10000)
-            print(7)
+
             PlaceType.objects.bulk_create(objs['PlaceType'], batch_size=10000)
-            print(8)
+
             PlaceGeom.objects.bulk_create(objs['PlaceGeom'], batch_size=10000)
-            print(9)
+
             PlaceLink.objects.bulk_create(objs['PlaceLink'], batch_size=10000)
-            print(10)
+
             PlaceRelated.objects.bulk_create(objs['PlaceRelated'], batch_size=10000)
-            print(11)
-            # PlaceWhen.objects.bulk_create(objs['PlaceWhen'],batch_size=10000)
-            print(12)
-            # PlaceDescription.objects.bulk_create(objs['PlaceDescription'],batch_size=10000)
-            print(13)
+
             infile.close()
 
-            print('rows,linked,links:', countrows, countlinked, total_links)
-        except:
-            print('tsv insert failed', sys.exc_info())
+        except Exception as e:
             # drop the (empty) dataset if insert wasn't complete
+            capture_exception(e)
             ds.delete()
             # email to user, admin
             subj = 'World Historical Gazetteer error followup'
@@ -2040,9 +1843,8 @@ def ds_insert_tsv(request, pk):
             # return message to 500.html
             messages.error(request,
                            "Database insert failed, but we don't know why. The WHG team has been notified and will follow up by email to <b>" + user.username + '</b> (' + user.email + ')')
-            return HttpResponseServerError()
+            raise ValueError(e)
     else:
-        print('insert_tsv skipped, already in')
         messages.add_message(request, messages.INFO, 'data is uploaded, but problem displaying dataset page')
         return redirect('/mydata')
 
@@ -2069,7 +1871,6 @@ class DataListsView(LoginRequiredMixin, ListView):
 
     # which template to use?
     def get_template_names(self, *args, **kwargs):
-        print('self.request.path', self.request.path)
         if self.request.path == reverse('data-datasets'):
             return [self.template_d]
         elif self.request.path == reverse('data-collections'):
@@ -2083,7 +1884,6 @@ class DataListsView(LoginRequiredMixin, ListView):
         me = self.request.user
         whgteam = me.is_superuser or 'whg_team' in [g.name for g in me.groups.all()]
         teaching = 'teaching' in [g.name for g in me.groups.all()]
-        print('DataListsView() whgteam:' + str(whgteam) + ', teaching: ' + str(teaching))
 
         if self.request.path == reverse('data-datasets'):
             idlist = [obj.id for obj in Dataset.objects.all() if me in obj.owners or
@@ -2093,26 +1893,20 @@ class DataListsView(LoginRequiredMixin, ListView):
         elif self.request.path == reverse('data-collections'):
             list = Collection.objects.all().order_by('created') if whgteam \
                 else Collection.objects.filter(owner=me).order_by('created')
-            # print('list:', list)
             return list
         elif self.request.path == reverse('data-areas'):
-            print('areas...whgteam?', whgteam)
             study_areas = ['ccodes', 'copied', 'drawn']  # only user study areas
             list = Area.objects.all().filter(type__in=study_areas).order_by('-id') if whgteam else \
                 Area.objects.all().filter(type__in=study_areas, owner=me).order_by('-id')
-            # print('list:', list)
             return list
         else:
-            print('resources...whgteam?', whgteam)
             list = Resource.objects.all().order_by('create_date') if whgteam or teaching \
                 else Resource.objects.all().filter(owner=me).order_by('created')
-            # print('list:', list)
             return list
 
     def get_context_data(self, *args, **kwargs):
         me = self.request.user
         context = super(DataListsView, self).get_context_data(*args, **kwargs)
-        print('in get_context', me)
 
         context['viewable'] = ['uploaded', 'inserted', 'reconciling', 'review_hits', 'reviewed', 'review_whg',
                                'indexed']
@@ -2145,8 +1939,6 @@ class PublicListsView(ListView):
     def get_context_data(self, *args, **kwargs):
         context = super(PublicListsView, self).get_context_data(*args, **kwargs)
 
-        # public datasets available as dataset_list
-        # public collections
         context['coll_list'] = Collection.objects.filter(public=True).order_by('created')
         context['viewable'] = ['uploaded', 'inserted', 'reconciling', 'review_hits', 'reviewed', 'review_whg',
                                'indexed']
@@ -2202,6 +1994,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
             for chunk in data['file'].chunks():
                 os.write(tempf, chunk)
         except Exception as e:
+            capture_exception(e)
             raise Exception("Problem with the input file %s" % self.request.FILES['file'])
         finally:
             os.close(tempf)
@@ -2284,7 +2077,6 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
                 dsobj.save()
             except Exception as e:
                 capture_exception(e)
-                print(e)
                 return render(self.request, 'datasets/dataset_create.html', self.args)
 
             # create user directory if necessary
@@ -2366,7 +2158,6 @@ class DatasetPublicView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super(DatasetPublicView, self).get_context_data(**kwargs)
-        print('self, kwargs', self, self.kwargs)
 
         ds = get_object_or_404(Dataset, id=self.kwargs['pk'])
         file = ds.file
@@ -2428,7 +2219,6 @@ class DatasetDeleteView(DeleteView):
 
 
 def ds_list(request, label):
-    print('in ds_list() for', label)
     qs = Place.objects.all().filter(dataset=label)
     geoms = []
     for p in qs.all():
@@ -2447,7 +2237,6 @@ def ds_list(request, label):
 
 
 def match_undo(request, ds, tid, pid):
-    print('in match_undo() ds, task, pid:', ds, tid, pid)
     from django_celery_results.models import TaskResult
 
     geom_matches = PlaceGeom.objects.all().filter(task_id=tid, place_id=pid)
@@ -2491,15 +2280,7 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
     def form_valid(self, form):
         data = form.cleaned_data
         ds = get_object_or_404(Dataset, pk=self.kwargs.get("id"))
-        dsid = ds.id
-        user = self.request.user
-        file = data['file']
-        filerev = ds.files.all().order_by('-rev')[0].rev
-        print('DatasetSummaryView kwargs', self.kwargs)
-        print('DatasetSummaryView form_valid() data->', data)
         if data["file"] == None:
-            print('data["file"] == None')
-            # no file, updating dataset only
             ds.title = data['title']
             ds.description = data['description']
             ds.uri_base = data['uri_base']
@@ -2507,10 +2288,7 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        print('kwargs', self.kwargs)
         context = {}
-        print('form not valid', form.errors)
-        print('cleaned_data', form.cleaned_data)
         context['errors'] = form.errors
         return super().form_invalid(form)
 
@@ -2520,9 +2298,6 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
 
     def get_context_data(self, *args, **kwargs):
         context = super(DatasetSummaryView, self).get_context_data(*args, **kwargs)
-
-        print('DatasetSummaryView get_context_data() kwargs:', self.kwargs)
-        print('DatasetSummaryView get_context_data() request.user', self.request.user)
         id_ = self.kwargs.get("id")
         ds = get_object_or_404(Dataset, id=id_)
 
@@ -2533,14 +2308,10 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
     """
         file = ds.file
         if file.df_status == 'format_ok':
-            print('format_ok , inserting dataset ' + str(id_))
             if file.format == 'delimited':
                 result = ds_insert_tsv(self.request, id_)
-                print('tsv result', result)
             else:
                 result = ds_insert_lpf(self.request, id_)
-                print('lpf result', result)
-            print('ds_insert_xxx() result', result)
             ds.numrows = result.get('numrows')
             ds.numlinked = result.get('numlinked')
             ds.total_links = result.get('total_links')
@@ -2581,8 +2352,6 @@ class DatasetSummaryView(LoginRequiredMixin, UpdateView):
 
         context['beta_or_better'] = True if self.request.user.groups.filter(
             name__in=['beta', 'admins']).exists() else False
-
-        print('context from DatasetSummaryView', context)
         return context
 
 
@@ -2600,8 +2369,6 @@ class DatasetBrowseView(LoginRequiredMixin, DetailView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        user = self.request.user
-        print('messages:', messages.get_messages(self.kwargs))
         return '/datasets/' + str(id_) + '/browse'
 
     def get_object(self):
@@ -2613,12 +2380,9 @@ class DatasetBrowseView(LoginRequiredMixin, DetailView):
         context['mbtokenkg'] = settings.MAPBOX_TOKEN_KG
         context['mbtokenmb'] = settings.MAPBOX_TOKEN_MB
 
-        print('DatasetBrowseView get_context_data() kwargs:', self.kwargs)
-        print('DatasetBrowseView get_context_data() request.user', self.request.user)
         id_ = self.kwargs.get("id")
 
         ds = get_object_or_404(Dataset, id=id_)
-        me = self.request.user
         ds_tasks = [t.task_name[6:] for t in ds.tasks.filter(status='SUCCESS')]
 
         context['collaborators'] = ds.collaborators.all()
@@ -2655,8 +2419,6 @@ class DatasetPlacesView(DetailView):
         context['mbtokenkg'] = settings.MAPBOX_TOKEN_KG
         context['mbtokenmb'] = settings.MAPBOX_TOKEN_MB
 
-        print('DatasetPlacesView get_context_data() kwargs:', self.kwargs)
-        print('DatasetPlacesView get_context_data() request.user', self.request.user)
         id_ = self.kwargs.get("id")
 
         ds = get_object_or_404(Dataset, id=id_)
@@ -2689,8 +2451,6 @@ class DatasetReconcileView(LoginRequiredMixin, DetailView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        user = self.request.user
-        print('messages:', messages.get_messages(self.kwargs))
         return '/datasets/' + str(id_) + '/reconcile'
 
     def get_object(self):
@@ -2702,9 +2462,6 @@ class DatasetReconcileView(LoginRequiredMixin, DetailView):
 
         id_ = self.kwargs.get("id")
         ds = get_object_or_404(Dataset, id=id_)
-
-        # build context for rendering dataset.html
-        me = self.request.user
 
         # omits FAILURE and ARCHIVED
         ds_tasks = ds.tasks.filter(status='SUCCESS')
@@ -2732,8 +2489,6 @@ class DatasetCollabView(LoginRequiredMixin, DetailView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        user = self.request.user
-        print('messages:', messages.get_messages(self.kwargs))
         return '/datasets/' + str(id_) + '/collab'
 
     def get_object(self):
@@ -2743,13 +2498,8 @@ class DatasetCollabView(LoginRequiredMixin, DetailView):
     def get_context_data(self, *args, **kwargs):
         context = super(DatasetCollabView, self).get_context_data(*args, **kwargs)
 
-        print('DatasetCollabView get_context_data() kwargs:', self.kwargs)
-        print('DatasetCollabView get_context_data() request.user:', self.request.user)
         id_ = self.kwargs.get("id")
         ds = get_object_or_404(Dataset, id=id_)
-
-        # build context for rendering dataset.html
-        me = self.request.user
 
         context['ds'] = ds
 
@@ -2777,8 +2527,6 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        user = self.request.user
-        print('messages:', messages.get_messages(self.kwargs))
         return '/datasets/' + str(id_) + '/log'
 
     def get_object(self):
@@ -2828,7 +2576,6 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
                 remaining = i[1][0]['total']
                 hadhits = gothits[tid]
                 reviewed = hadhits - remaining
-                print('auth, tid, remaining, hadhits', auth, tid, remaining, hadhits)
                 if remaining == 0:
                     context['msg_' + auth] = {
                         'msg': msg_done % (auth, "/contact"),
@@ -2879,8 +2626,6 @@ class DatasetLogView(LoginRequiredMixin, DetailView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        user = self.request.user
-        print('messages:', messages.get_messages(self.kwargs))
         return '/datasets/' + str(id_) + '/log'
 
     def get_object(self):
@@ -2890,12 +2635,8 @@ class DatasetLogView(LoginRequiredMixin, DetailView):
     def get_context_data(self, *args, **kwargs):
         context = super(DatasetLogView, self).get_context_data(*args, **kwargs)
 
-        print('DatasetLogView get_context_data() kwargs:', self.kwargs)
-        print('DatasetLogView get_context_data() request.user:', self.request.user)
         id_ = self.kwargs.get("id")
         ds = get_object_or_404(Dataset, id=id_)
-
-        me = self.request.user
 
         context['ds'] = ds
         context['log'] = ds.log.filter(category='dataset').order_by('-timestamp')
@@ -2904,112 +2645,3 @@ class DatasetLogView(LoginRequiredMixin, DetailView):
             name__in=['beta', 'admins']).exists() else False
 
         return context
-
-
-"""
-DEPRECATED Aug 2022: all pass0 must be reviewed for accessioning
-write_idx_pass0(taskid)
-called from dataset_detail>reconciliation tab
-accepts all pass0 whg matches, indexes new child doc for each
-if >1 match, compute parent winner and merge others as children
-"""
-# def write_idx_pass0(request, tid):
-#   task = get_object_or_404(TaskResult,task_id=tid)
-#   kwargs=json.loads(task.task_kwargs.replace("'",'"'))
-#   ds = get_object_or_404(Dataset, pk=kwargs['ds'])
-#   referer = request.META.get('HTTP_REFERER')
-#   # get unreviewed pass0 hits
-#   hits = Hit.objects.filter(
-#     task_id=tid,
-#     query_pass='pass0',
-#     reviewed=False
-#   )
-#   # some have more than one hit
-#   pids = set([h.place_id for h in hits])
-#   chosen = [] # gather parent _ids
-#   for pid in pids:
-#     hset = [h for h in hits if h.place_id == pid]
-#     doc = makeDoc(get_object_or_404(Place, pk=pid))
-#     if len(hset) == 1:
-#       # index as child
-#       parent_id = hset[0].json['whg_id']
-#       doc['relation'] = {"name":"child", "parent": parent_id}
-#       names = list(set([n['toponym'] for n in doc['names']]))
-#       chosen.append(parent_id)
-#       pass
-#     else:
-#       #
-#       parent_ids = [h.json['whg_id'] for h in hset]
-#       # calc weight as len(sources) + len(links)
-#       # create (whg_id, weight) sets
-#       parents = [(h.json['whg_id'], len(h.json['sources']) + \
-#                   len(h.json['links'])) for h in hset]
-#       already = len(set(chosen) & set([p[0] for p in parent_ids])) > 0
-#       names = list(set([n['toponym'] for n in doc['names']]))
-#       winner_id = topParent(parents,'set')
-#       doc['relation'] = {"name":"child", "parent": winner_id}
-#
-#       demoted = parent_ids.remove(winner_id)
-#       demoteParents(demoted, winner_id, pid)
-#
-#       # log this winner, may be needed
-#       chosen.append(winner_id)
-#
-#     print(len(hset), hset)
-#   print('write_idx_pass0(); process '+str(hits.count())+' hits')
-#   return HttpResponseRedirect(referer)
-
-"""
-DEPRECATED
-DashboardView()
-list user datasets, study areas, collections, teaching resources
-"""
-# class DashboardView(LoginRequiredMixin, ListView):
-#   login_url = '/accounts/login/'
-#   redirect_field_name = 'redirect_to'
-#
-#   context_object_name = 'dataset_list'
-#   template_name = 'datasets/dashboard.html'
-#
-#   def get_queryset(self):
-#     me = self.request.user
-#     if me.is_superuser or 'whg_team' in [g.name for g in me.groups.all()]:
-#       print('in get_queryset() if',me)
-#       return Dataset.objects.all().order_by('-create_date')
-#     else:
-#       return Dataset.objects.filter( Q(owner=me) ).order_by('-id')
-#
-#
-#   def get_context_data(self, *args, **kwargs):
-#     me = self.request.user
-#     context = super(DashboardView, self).get_context_data(*args, **kwargs)
-#     print('in get_context',me)
-#
-#     types_ok=['ccodes','copied','drawn']
-#     # returns co-owned and shared datasets (rw)
-#     context['shared_list'] = Dataset.objects.filter(id__in=myprojects(me)).order_by('-create_date')
-#
-#     context['public_list'] = Dataset.objects.filter(public=True).order_by('-numrows')
-#
-#     # list areas
-#     userareas = Area.objects.all().filter(type__in=types_ok).order_by('created')
-#     context['area_list'] = userareas if me.is_superuser else userareas.filter(owner=me)
-#
-#     # list collections
-#     collection_list = Collection.objects.all().order_by('create_date')
-#     context['collections'] = collection_list if me.is_superuser else \
-#       collection_list.filter(owner=me)
-#
-#     # list teaching resources
-#     resource_list = Resource.objects.all().order_by('create_date')
-#     context['resources'] = resource_list if me.is_superuser else \
-#       resource_list.filter(owner=me)
-#
-#     context['viewable'] = ['uploaded','inserted','reconciling','review_hits','reviewed','review_whg','indexed']
-#
-#     context['beta_or_better'] = True if self.request.user.groups.filter(name__in=['beta', 'admins', 'whg_team']).exists() else False
-#     # TODO: assign users to 'teacher' group
-#     context['teacher'] = True if self.request.user.groups.filter(name__in=['teacher']).exists() else False
-#     # TODO: user place collections
-#     #print('DashboardView context:', context)
-#     return context

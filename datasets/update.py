@@ -1,14 +1,12 @@
-# testing ES whg index updating
 from django.conf import settings
-from django.shortcuts import render, get_object_or_404
-import simplejson as json
-import codecs, tempfile, os, re, sys, math
+from django.shortcuts import get_object_or_404
+import re
 import pandas as pd
 from places.models import *
-from datasets.models import Dataset, Hit, DatasetFile
-from datasets.utils import validate_lpf, validate_tsv
+from datasets.models import Dataset
 from elasticsearch7 import Elasticsearch
 from elastic.es_utils import makeDoc
+from sentry_sdk import capture_exception
 
 es = Elasticsearch([{'host': 'localhost',
                      'port': 9200,
@@ -188,8 +186,8 @@ def deleteFromIndex(pids):
                     }
                     try:
                         es.update_by_query(index=idx, body=q_update)
-                    except:
-                        ...
+                    except Exception as e:
+                        capture_exception(e)
                     # parent status transfered to 'eligible' child, add to list
                     delthese.append(pid)
             elif role == 'child':
@@ -217,8 +215,8 @@ def deleteFromIndex(pids):
                     }
                     try:
                         es.update_by_query(index=idx, body=q_update)
-                    except:
-                        ...
+                    except Exception as e:
+                        capture_exception(e)
                 # child's presence in parent removed, add to delthese[]
                 delthese.append(pid)
         es.delete_by_query(idx, body={"query": {"terms": {"place_id": delthese}}})
@@ -272,41 +270,3 @@ q_update = {"script": {
 },
     "query": {"match": {"_id": parent_whgid}}}
 es.update_by_query(index=idx, body=q_update, conflicts='proceed')
-
-# DELETE algorithm
-# for r in rows_delete:
-#  get doc from ES
-#    if doc._source.relation.name = 'parent'
-#      if len(_source.children) > 0
-#         make first a parent and any siblings children
-#         delete doc
-#      else
-#         delete doc
-#    else if doc._source.relation.name = 'child'
-#      get its doc._source.relation.parent
-#      remove pid from its children[] list
-#      delete doc
-
-# REPLACE algorithm
-# for r in rows_replace:
-#   get doc from ES
-#    if doc._source.relation.name = 'parent'
-#      
-#      
-#      
-#      
-#      
-#    else if doc._source.relation.name = 'child'
-#      
-#      
-#      
-#   
-
-
-## FILES (new has been validated [0], current became [1])
-# cur_fileobj = DatasetFile.objects.filter(dataset_id_id=dsid).order_by('-upload_date')[1]
-# cur_filename = cur_fileobj.file.name
-# cur_uribase = cur_fileobj.uri_base
-# new_fileobj = DatasetFile.objects.filter(dataset_id_id=dsid).order_by('-upload_date')[0]
-# new_filename = new_fileobj.file.name
-# new_uribase = new_fileobj.uri_base
