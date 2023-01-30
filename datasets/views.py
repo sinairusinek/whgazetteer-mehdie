@@ -1311,7 +1311,7 @@ def ds_compare(request):
         if format == 'delimited':
             # goodtable wants filename only
             # returns [x['message'] for x in errors]
-            vresult = validate_tsv(tempfn)
+            vresult = validate_tsv(tempfn, 'coll')
         elif format == 'lpf':
             # TODO: feed tempfn only?
             # TODO: accept json-lines; only FeatureCollections ('coll') now

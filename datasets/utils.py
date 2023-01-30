@@ -1,5 +1,5 @@
 import codecs, csv, datetime, sys, openpyxl, os, re, time
-import json
+import simplejson as json
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry
