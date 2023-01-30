@@ -1985,6 +1985,7 @@ class DatasetCreateView(LoginRequiredMixin, CreateView):
         file = self.request.FILES['file']
         filename = file.name
         mimetype = file.content_type
+        raise ValueError(str(file.content_type))
         newfn, newtempfn = ['', '']
 
         # open & write tempf to a temp location;
