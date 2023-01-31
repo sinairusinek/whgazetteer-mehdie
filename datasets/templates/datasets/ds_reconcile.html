@@ -42,19 +42,17 @@
   <div class="tab-content">
     <div id="reconciliation" class="tab-pane fade show active " role="tabpanel" aria-labelledby="reconciliation-tab">
       <div id="ds_tasks" class="small">
-        <h6 class="">Reconciliation Tasks 
+        <h6 class="">Reconciliation Tasks
           <span class="small help-matches" data-id="reconciliation">
             {% fontawesome_icon 'question-circle' color='#993333' %}
           </span>
-          {% if user.is_superuser or user in owners %}
             <span class="ml-4 small">
             <a id="addtask_link" href="{% url 'datasets:ds_addtask' id=ds.id %}">Add new task {% fontawesome_icon 'plus-square' color='#336699' %}</a>
             </span>
-          {% endif %}
         </h6>
-        {% if not messages %}
+{#        {% if not messages %}#}
 	        <p>Linking in WHG is the activity of matching records from one dataset to another, in a method called reconciliation or alignment. It can also accomplish geocoding of place names for many records that are missing locations. Reconciliation tasks can be performed against our local Wikidata index or against another dataset. Fully accessioning data to WHG involves the further step of reconciling against our "union index.</p>
-        {% endif %}
+{#        {% endif %}#}
         {% if user in owners or user in collaborators or user.is_superuser %}
 	        {% if ds.ds_status == 'indexed' %}
 		        <div id="ready" class="hidden pl-2">
@@ -75,7 +73,7 @@
               <p class="larger mb-2 strong">{{ message|safe }}</p>
               {% endif %}
             {% endfor %}</div>
-          {% endif %}        
+          {% endif %}
           {% for t in tasks %}
             {% if t.status == 'SUCCESS' %}
               <div class="task-box mb-2 {{t.task_name}}">
@@ -109,14 +107,14 @@
                     <span id="spinner"></span>
                     <ul>
                       {% if t.result|get:"pass0" > 0 and t.task_name != "align_idx" %}
-                        <li id="pass0_{{t.task_id}}" class="li-left">Pass 0 (matched links): 
-                        <span class="mx-2 strong" id='{{t.task_id}}_0'>nn</span> 
+                        <li id="pass0_{{t.task_id}}" class="li-left">Pass 0 (matched links):
+                        <span class="mx-2 strong" id='{{t.task_id}}_0'>nn</span>
                             <a href="{% url 'datasets:review' pk=ds.id tid=t.task_id passnum='pass0' %}">review</a>
                          <span class="pass0auto">
                           {% if t.task_name == 'align_idx'%}
-                          | <a href="{% url 'datasets:idx_pass0' tid=t.task_id %}">auto-accept</a>  
+                          | <a href="{% url 'datasets:idx_pass0' tid=t.task_id %}">auto-accept</a>
                           {% elif t.task_name == 'align_wdlocal'%}
-                          | <a href="{% url 'datasets:wd_pass0' tid=t.task_id %}">auto-accept</a> 
+                          | <a href="{% url 'datasets:wd_pass0' tid=t.task_id %}">auto-accept</a>
                           {% endif %}
                          <span class="help-matches" data-id="auto-match">{% fontawesome_icon 'question-circle' color='#993333' %}</span></span>
                          </li>
@@ -135,24 +133,24 @@
                       {% endif %}
 
                       {% if t.result|get:"pass2" > 0 %}
-                        <li class="li-left">Pass 2: 
-                        <span class="strong mx-2" id='{{t.task_id}}_2'>nn</span> 
+                        <li class="li-left">Pass 2:
+                        <span class="strong mx-2" id='{{t.task_id}}_2'>nn</span>
                         <a href="{% url 'datasets:review' pk=ds.id tid=t.task_id passnum='pass2' %}">review</a>
                         </li>
                       {% endif %}
-                      
+
                       {% if t.result|get:"pass3" > 0 %} <!-- only TGN has pass3 -->
-                        <li class="li-left">Pass 3: <span class="strong mx-2" id='{{t.task_id}}_3'>nn</span> 
+                        <li class="li-left">Pass 3: <span class="strong mx-2" id='{{t.task_id}}_3'>nn</span>
                         <a href="{% url 'datasets:review' pk=ds.id tid=t.task_id passnum='pass3' %}">review</a></li>
                       {% endif %}
-                      
-                      <li class="li-left">Deferred: 
+
+                      <li class="li-left">Deferred:
                         <span class="strong mx-2 hidden" id='{{t.task_id}}_def'>
                         &nbsp;<a href="{% url 'datasets:review' pk=ds.id tid=t.task_id passnum='def' %}">review</a>
                         </span>
                       </li>
-                    </ul> 
-                    
+                    </ul>
+
                   </div>
                   <div id="task_logo" class="col-sm-2">
                     {% if t.task_name == 'align_wd' %}
@@ -198,7 +196,7 @@
               </div>
             </form>
           </div> <!-- .form-group -->
-        </div> <!-- .modal-body -->      
+        </div> <!-- .modal-body -->
         <div class="modal-footer">
           <div id="buttons_pre">
             <button id="btn_cancel" type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancel</button>
@@ -224,17 +222,17 @@
   // modal buttons
   $("#btn_done").on('click', function(){ location.reload(); })
   $("#btn_cancel").on('click', function(){ location.reload(); })
-  
+
   spin_opts = { scale: .5, top: '50%'}
   function startCountsSpinner(){
     window.spinner_counts = new Spin.Spinner(spin_opts).spin();
-    $("#spinner").append(spinner_counts.el);   
+    $("#spinner").append(spinner_counts.el);
   }
-  
+
   // on page load
   $(function(){
     startCountsSpinner()
-    
+
     updateTotals('{{ ds.id }}')
     if('{{ status }}' == 'updating'){
       console.log('{{ status }}','{{ context }}')
@@ -243,14 +241,14 @@
       $("#div_file").toggleClass('border-red')
       $(".update-msg").removeClass('hidden')
     }
-    
+
     // generic help load
     $(".help-matches").click(function(){
       page=$(this).data('id')
       {#console.log('help:', page)#}
       $('.selector').dialog('open');
     })
-    
+
     $(".selector").dialog({
       resizable: false,
       autoOpen: false,
@@ -277,7 +275,7 @@
           counts = updates[u][1]
           task = updates[u][1]['task']
           console.log('updateTotals() counts', task, counts)
-          
+
           // if all are reviewed, disable radio button
           if(counts['total'] == 0 ){
             $('.'+task).css('border', '2px dashed darkseagreen')
@@ -287,7 +285,7 @@
 	            $('#'+task).addClass("hidden")
 	          }
           }
-          
+
           $("#"+tid+'_remaining').html(counts['total'])
           $("#"+tid+'_0').html(counts['pass0'])
 	        running_count = (counts['total']-counts['deferred'])
@@ -298,7 +296,7 @@
           }
           $("#"+tid+'_2').html(counts['pass2'])
           $("#"+tid+'_3').html(counts['pass3'])
-          
+
           // hide 'review' link if count is 0
           // hide 'auto-accept' if it's pass0
           Object.keys(counts).forEach(function(key) {
@@ -311,21 +309,21 @@
               }
             }
           })
-          
+
           if (counts['deferred'] > 0) {
             //console.log('got deferred',counts['deferred'] )
             $("#"+tid+'_def').html(counts['deferred']+$("#"+tid+'_def').html())
             $("#"+tid+'_def').removeClass('hidden')
           } else {
-            $("#"+tid+'_def').html('none') 
-            $("#"+tid+'_def').removeClass('hidden')            
+            $("#"+tid+'_def').html('none')
+            $("#"+tid+'_def').removeClass('hidden')
           }
         }
       }
     ).done(function(){
       spinner_counts.stop()
     })
-  }  
+  }
   $(".confirm-del-geoms").click(function(){
     return confirm('DANGER! Deletes all place_geom records created so far in Review step');
   })
