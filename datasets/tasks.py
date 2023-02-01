@@ -493,7 +493,7 @@ def normalize(h, auth, language=None):
                 cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims']['P17']
             ]
         except Exception as e:
-            capture_exception(h['claims'])
+            capture_exception(h['claims'].items())
 
         # include en + native lang if not en
         rec.descriptions = wdDescriptions(h['descriptions'], language) if 'descriptions' in h.keys() else []
