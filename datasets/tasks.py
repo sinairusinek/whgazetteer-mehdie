@@ -490,7 +490,7 @@ def normalize(h, auth, language=None):
         # countries
 
         rec.ccodes = [
-            cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims'].get('P17', [])
+            cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims']['P17']
         ]
 
         # include en + native lang if not en
@@ -1042,8 +1042,6 @@ def align_wdlocal(pk, **kwargs):
                 elif hit['pass'] == 'pass2':
                     count_p2 += 1
                 hit_parade["hits"].append(hit)
-                print(hit['pass'])
-                print('test1')
                 new = Hit(
                     authority='wd',
                     authrecord_id=hit['_id'],
@@ -1198,11 +1196,10 @@ def es_lookup_idx(qobj, *args, **kwargs):
     # /\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
     # pass0a, pass0b
     # /\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
-    try:
-        result0a = es.search(index=idx, body=q0)
-        hits0a = result0a["hits"]["hits"]
-    except Exception as e:
-        capture_exception(e)
+
+    result0a = es.search(index=idx, body=q0)
+    hits0a = result0a["hits"]["hits"]
+
     if len(hits0a) > 0:
         # >=1 matching identifier
         result_obj['hit_count'] += len(hits0a)
