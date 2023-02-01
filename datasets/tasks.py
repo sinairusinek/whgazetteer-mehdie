@@ -749,6 +749,8 @@ def align_tgn(pk, *args, **kwargs):
                     loc['type'] = "Point"
                 else:
                     loc = {}
+                print(hit['pass'])
+                print('test')
                 new = Hit(
                     authority='tgn',
                     authrecord_id=hit['_id'],
