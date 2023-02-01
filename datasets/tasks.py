@@ -749,8 +749,6 @@ def align_tgn(pk, *args, **kwargs):
                     loc['type'] = "Point"
                 else:
                     loc = {}
-                print(hit['pass'])
-                print('test')
                 new = Hit(
                     authority='tgn',
                     authrecord_id=hit['_id'],
@@ -1456,9 +1454,6 @@ def align_idx(pk, *args, **kwargs):
                     hitobj['links'] = list(dict.fromkeys(hitobj['links']))
 
                 hitobj['countries'] = ', '.join(list(dict.fromkeys(hitobj['countries'])))
-
-                print(', '.join(passes))
-                print('test3')
                 new = Hit(
                     task_id=task_id,
                     authority='whg',
