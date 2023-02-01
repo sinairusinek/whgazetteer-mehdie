@@ -1044,6 +1044,8 @@ def align_wdlocal(pk, **kwargs):
                 elif hit['pass'] == 'pass2':
                     count_p2 += 1
                 hit_parade["hits"].append(hit)
+                print(hit['pass'])
+                print('test1')
                 new = Hit(
                     authority='wd',
                     authrecord_id=hit['_id'],
@@ -1455,6 +1457,8 @@ def align_idx(pk, *args, **kwargs):
 
                 hitobj['countries'] = ', '.join(list(dict.fromkeys(hitobj['countries'])))
 
+                print(', '.join(passes))
+                print('test3')
                 new = Hit(
                     task_id=task_id,
                     authority='whg',
