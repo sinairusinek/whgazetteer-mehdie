@@ -490,7 +490,7 @@ def normalize(h, auth, language=None):
         # countries
 
         rec.ccodes = [
-            cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims']['P17']
+            cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims'].get('P17', [])
         ]
 
         # include en + native lang if not en
