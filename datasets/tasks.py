@@ -35,23 +35,6 @@ es = Elasticsearch([{'host': 'localhost',
                      'retry_on_timeout': True}])
 
 
-#
-# ls = {"id": "seKdC4YBewFrmK5KlFex",
-#       "name": "1mac11",
-#       "api_key": "fn3oH6hMQMi0aJbNunRjOg",
-#       "encoded": "c2VLZEM0WUJld0ZybUs1S2xGZXg6Zm4zb0g2aE1RTWkwYUpiTnVuUmpPZw=="
-#       }
-#
-# API_KEY = 'private-45p1gpdszwai56kp96h1chni'
-# CLOUD_ID = "a7c21331f36243dab0ebafb52a890d30:dXMtY2VudHJhbDEuZ2NwLmNsb3VkLmVzLmlvJGJmMmFlY2JhMDZkNzQ1ZDZhNDhiMDZlNjQ3NWYxNTViJDFmOWZkNTM2OTY3MjQ4MmU4NmFkZTQ1NjZkZTFiNzRm"
-# PB_API_KEY = 'search-9o4i7uyoijmtz8te3mes3d1n'
-#
-# client = Elasticsearch(
-#     cloud_id=CLOUD_ID,
-#     api_key=PB_API_KEY,
-# )
-
-
 @shared_task(name="testy")
 def testy():
     print("I'm testy...who wouldn't be?")
