@@ -435,75 +435,75 @@ def normalize(h, auth, language=None):
         except Exception as e:
             capture_exception(e)
     elif auth == 'wdlocal':
+        # TODO: do it in index?
+        variants = h['variants']
+        title = wdTitle(variants, language)
+
+        #  place_id, dataset, src_id, title
+        rec = HitRecord(-1, 'wd', h['id'], title)
+
+        # list of variant@lang (excldes chosen title)
+        v_array = []
+        for v in variants:
+            for n in v['names']:
+                if n != title:
+                    v_array.append(n + '@' + v['lang'])
+        rec.variants = v_array
+
+        if 'location' in h.keys():
+            # single MultiPoint geometry
+            loc = h['location']
+            loc['id'] = h['id']
+            loc['ds'] = 'wd'
+            # single MultiPoint geom if exists
+            rec.geoms = [loc]
+
+        # turn these identifier claims into links
+        qlinks = {
+            'P1566': 'gn', 'P1584': 'pl', 'P244': 'loc',
+            'P1667': 'tgn', 'P214': 'viaf', 'P268': 'bnf',
+            'P2503': 'gov', 'P1871': 'cerl', 'P227': 'gnd'
+        }
+        links = []
+        hlinks = list(
+            set(h['claims'].keys()) & set(qlinks.keys()))
+        if len(hlinks) > 0:
+            for l in hlinks:
+                links.append(qlinks[l] + ':' + str(h['claims'][l][0]))
+
+        # add en and FIRST {language} wikipedia sitelink OR first sitelink
+        wplinks = []
+        wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == 'en']
+        if language != 'en':
+            wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == language]
+        # TODO: non-English wp pages do not resolve well
+
+        links += ['wp:' + l for l in set(wplinks)]
+
+        rec.links = links
+
+        # look up Q class labels
+        htypes = set(h['claims']['P31'])
+        qtypekeys = set([t[0] for t in qtypes.items()])
+        rec.types = [qtypes[t] for t in list(set(htypes & qtypekeys))]
+
+        # countries
         try:
-            # TODO: do it in index?
-            variants = h['variants']
-            title = wdTitle(variants, language)
-
-            #  place_id, dataset, src_id, title
-            rec = HitRecord(-1, 'wd', h['id'], title)
-
-            # list of variant@lang (excldes chosen title)
-            v_array = []
-            for v in variants:
-                for n in v['names']:
-                    if n != title:
-                        v_array.append(n + '@' + v['lang'])
-            rec.variants = v_array
-
-            if 'location' in h.keys():
-                # single MultiPoint geometry
-                loc = h['location']
-                loc['id'] = h['id']
-                loc['ds'] = 'wd'
-                # single MultiPoint geom if exists
-                rec.geoms = [loc]
-
-            # turn these identifier claims into links
-            qlinks = {
-                'P1566': 'gn', 'P1584': 'pl', 'P244': 'loc',
-                'P1667': 'tgn', 'P214': 'viaf', 'P268': 'bnf',
-                'P2503': 'gov', 'P1871': 'cerl', 'P227': 'gnd'
-            }
-            links = []
-            hlinks = list(
-                set(h['claims'].keys()) & set(qlinks.keys()))
-            if len(hlinks) > 0:
-                for l in hlinks:
-                    links.append(qlinks[l] + ':' + str(h['claims'][l][0]))
-
-            # add en and FIRST {language} wikipedia sitelink OR first sitelink
-            wplinks = []
-            wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == 'en']
-            if language != 'en':
-                wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == language]
-            # TODO: non-English wp pages do not resolve well
-
-            links += ['wp:' + l for l in set(wplinks)]
-
-            rec.links = links
-
-            # look up Q class labels
-            htypes = set(h['claims']['P31'])
-            qtypekeys = set([t[0] for t in qtypes.items()])
-            rec.types = [qtypes[t] for t in list(set(htypes & qtypekeys))]
-
-            # countries
             rec.ccodes = [
-                cchash[0][c]['gnlabel'] for c in cchash[0] \
-                if cchash[0][c]['wdid'] in h['claims']['P17']
+                cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims']['P17']
             ]
-
-            # include en + native lang if not en
-            rec.descriptions = wdDescriptions(h['descriptions'], language) if 'descriptions' in h.keys() else []
-
-            # not applicable
-            rec.parents = []
-
-            # no minmax in hit if no inception value(s)
-            rec.minmax = [h['minmax']['gte'], h['minmax']['lte']] if 'minmax' in h else []
         except Exception as e:
-            capture_exception(e)
+            capture_exception(h['claims'])
+
+        # include en + native lang if not en
+        rec.descriptions = wdDescriptions(h['descriptions'], language) if 'descriptions' in h.keys() else []
+
+        # not applicable
+        rec.parents = []
+
+        # no minmax in hit if no inception value(s)
+        rec.minmax = [h['minmax']['gte'], h['minmax']['lte']] if 'minmax' in h else []
+
 
     elif auth == 'tgn':
         rec = HitRecord(-1, 'tgn', h['tgnid'], h['title'])
