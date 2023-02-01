@@ -488,16 +488,10 @@ def normalize(h, auth, language=None):
         rec.types = [qtypes[t] for t in list(set(htypes & qtypekeys))]
 
         # countries
-        try:
-            print('test')
-            print(h['claims'])
-            print(h['claims'].items())
-            print('test')
-            rec.ccodes = [
-                cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims']['P17']
-            ]
-        except Exception as e:
-            capture_exception(e)
+
+        rec.ccodes = [
+            cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims'].get('P17', [])
+        ]
 
         # include en + native lang if not en
         rec.descriptions = wdDescriptions(h['descriptions'], language) if 'descriptions' in h.keys() else []
