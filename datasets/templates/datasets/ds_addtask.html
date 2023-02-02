@@ -11,7 +11,7 @@
   <script src="{% static 'js/aliases.js' %}"></script>
   <script src="{% static 'js/easyprint.js' %}"></script>
   <script src="https://npmcdn.com/@turf/turf/turf.min.js"></script>
-  
+
   <link rel="stylesheet" href="{% static 'css/spin.css' %}"/>
   <link rel="stylesheet" href="//cdn.datatables.net/1.10.23/css/dataTables.bootstrap4.min.css">
   <script src="//cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js"></script>
@@ -45,8 +45,8 @@
       <li class="nav-item">
           <a class="nav-link" id="log-tab" data-toggle="tab" href="#" role="tab" aria-controls="log" aria-selected="true">Log & Comments</a>
       </li>
-  </ul>  
-  
+  </ul>
+
   <div class="tab-content">
     <div id="addtask" class="tab-pane fade show active" role="tabpanel" aria-labelledby="addtask-tab">
       <form action="{% url 'datasets:ds_recon' ds.id %}" method="POST">
@@ -69,7 +69,7 @@
               <div class="form-check text-danger mt-2">
                 <label class="form-check-label" for="r_whg">
                   <input type="radio" class="form-check-input" id="r_whg"
-                    name="recon" value="idx">WHG (accession/reconcile) 
+                    name="recon" value="idx">WHG (accession/reconcile)
                 </label>
 								{% for message in messages %}
 									<div class="container-fluid p-0">
@@ -173,11 +173,9 @@
                   <p class="font-weight-bold">match with one of my datasets{% fontawesome_icon 'question-circle' color='#993333' %}
                   </p>
                   <p>
-                    <select id="select_m_dataset" name="m_dataset" class="custom-select-sm" style="width:auto;">
-                      <option value="0" selected="selected">Select from the List of your datasets</option>
-                      <option disabled>___________</option>
-                      
-                      {% comment %} <option></option> {% endcomment %}
+                    <select id="select_m_dataset" required name="m_dataset" class="custom-select-sm" style="width:auto;">
+{#                      <option value="0" selected="selected">Select from the List of your datasets</option>#}
+{#                      <option disabled>___________</option>#}
                       {% for dataset in my_dataset %}
                         <option value="{{ dataset.id }}">{{ dataset.title }}</option>
                       {% endfor %}
@@ -193,10 +191,10 @@
                   <p class="font-weight-bold">match with a public dataset{% fontawesome_icon 'question-circle' color='#993333' %}
                   </p>
                   <p>
-                    <select id="select_p_dataset" name="p_dataset" class="custom-select-sm" style="width:auto;">
-                      <option value="0" selected="selected">Select from the List Public datasets</option>
-                      <option disabled>___________</option>
-                      
+                    <select id="select_p_dataset" required name="p_dataset" class="custom-select-sm" style="width:auto;">
+{#                      <option value="0" selected="selected">Select from the List Public datasets</option>#}
+{#                      <option disabled>___________</option>#}
+
                       {% comment %} <option></option> {% endcomment %}
                       {% for dataset in my_dataset %}
                         <option value="{{ dataset.id }}">{{ dataset.title }}</option>
@@ -273,10 +271,10 @@
                 <!--<p>This dataset has been augmented with { links_added }} links and { geoms_added }} geometries-->
                 <!--via reconciliation tasks. </p>-->
                 <!--{ endif %}-->
-              </div>          
+              </div>
             </form>
           </div> <!-- .form-group -->
-        </div> <!-- .modal-body -->      
+        </div> <!-- .modal-body -->
         <div class="modal-footer">
           <div id="buttons_pre">
             <button id="btn_cancel" type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancel</button>
@@ -306,7 +304,7 @@
     <!--$("#r_keep_wd").attr('checked', true)-->
     <!--$("#geo_constraint").hide(400)}-->
   <!--)-->
-  
+
   // modal buttons
   $("#btn_done").on('click', function(){ location.reload(); })
   $("#btn_cancel").on('click', function(){ location.reload(); })
@@ -329,9 +327,9 @@
       $("#addtask_lower").addClass("hidden")
     }
 
-    // set default 
+    // set default
     $("#r_keep_wd").attr('checked', true)
-    
+
     $("#cancel_taskadd").click(function(e){
       e.preventDefault();
       window.location.href = "{% url 'datasets:ds_reconcile' ds.id %}"
@@ -425,7 +423,7 @@
     opt = Object.values(idToFeature)[0].options
     foptions = { ...opt };
   }
-    
+
   // area-related
   function render_area(aid) {
     $.ajax({
@@ -442,7 +440,7 @@
     $( "#select_userarea option[value=0]" ).prop('selected',true)
     if ($(this).val() == 0) { features.clearLayers() } else{ render_area( $(this).val(), 'region') }
   });
-  
+
   $( "#select_userarea" ).change(function() {
     $( "#select_region option[value=0]" ).prop('selected',true)
     if ($(this).val() == 0) { features.clearLayers() } else{ render_area( $(this).val(), 'area') }
@@ -451,14 +449,14 @@
     }
   });
 
-  $("[rel='tooltip']").tooltip(); 
+  $("[rel='tooltip']").tooltip();
 
   // responds to leaflet_map tags in both #browse and #addtask tabs
   addEventListener('map:init', function (e) {
       token_mb = '{{ mbtokenmb }}',
       token_whg = '{{ mbtokenwhg }}',
       mbstyle_url = 'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}?access_token={token}';
-      
+
     var satellite  = L.tileLayer(mbstyle_url, {id:'mapbox/satellite-streets-v11', token:token_mb})
     var osm  = L.tileLayer(mbstyle_url, {id:'mapbox/light-v10', token:token_mb})
 
@@ -467,14 +465,14 @@
       "Satellite": satellite
     };
 
-    
+
     if (e.detail.id == 'map_browse'){
       // it's the Browse map, name it mappy
       window.mappy = e.detail.map
       mappy.setMaxBounds(null)
       L.control.layers(baseLayers).addTo(mappy);
       baseLayers['OSM'].addTo(mappy)
-      
+
       var printer = L.easyPrint({
         tileLayer: osm,
         sizeModes: ['Current'],
@@ -482,7 +480,7 @@
         exportOnly: true,
         hideControlContainer: true
       }).addTo(mappy)
-      
+
       // get dataset features -> renderMap() if < 15,000
       $.get("/api/geoms", {ds: "{{ ds.label }}", f: "{{ filter }}" },
         function(data){
@@ -497,7 +495,7 @@
             spinner.stop()
             $(".toomany").html('too many features to map (> '+geom.features.length+'), sorry!')
           }
-      })  
+      })
     } else {
       // it's map_recon in #addtask tab, name it mappyr
       window.mappyr = e.detail.map
@@ -508,7 +506,7 @@
     }
 
   }, false);
-  
+
   styles = {
     "Point": {
       "default": {radius: 1, fillColor:"#ff9900", fillOpacity: 0.8, stroke: false},
@@ -529,8 +527,8 @@
       "default":{fillOpacity: 0.3, opacity: .5, color: "#666", weight: 1, fillColor:"#ff9999"},
       "focus":{fillOpacity: 0.3, opacity: .5, color: "red", weight: 2, fillColor:"#ff9999"}}
   }
-  
-  
+
+
 </script>
 {% endblock %}
 	            {% comment %}

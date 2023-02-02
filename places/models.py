@@ -166,8 +166,7 @@ class PlaceType(models.Model):
     fclass = models.CharField(max_length=1, choices=FEATURE_CLASSES)  # geonames feature class
 
     def __str__(self):
-        # return self.jsonb['src_label']
-        return self.jsonb['sourceLabel']
+        return str(self.id)
 
     class Meta:
         managed = True

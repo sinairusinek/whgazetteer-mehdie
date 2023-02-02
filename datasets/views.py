@@ -14,6 +14,7 @@ from django.db import transaction
 
 # external
 from celery import current_app as celapp
+from django_celery_results.models import TaskResult
 # from chardet import detect
 import codecs, math, mimetypes, os, re, shutil, sys, tempfile
 from elasticsearch7 import Elasticsearch
@@ -2238,8 +2239,6 @@ def ds_list(request, label):
 
 
 def match_undo(request, ds, tid, pid):
-    from django_celery_results.models import TaskResult
-
     geom_matches = PlaceGeom.objects.all().filter(task_id=tid, place_id=pid)
     link_matches = PlaceLink.objects.all().filter(task_id=tid, place_id=pid)
     geom_matches.delete()
