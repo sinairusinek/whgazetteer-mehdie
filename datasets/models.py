@@ -209,8 +209,8 @@ class Dataset(models.Model):
         return result
 
     @property
-    def tasks(self):
-        # from django_celery_results.models import TaskResult
+    def tasks(self):  # TODO fix
+        # '(191,)'
         return TaskResult.objects.filter(task_args='[' + str(self.id) + ']', task_name__startswith='align')
 
     # tasks stats
@@ -310,7 +310,6 @@ class DatasetUser(models.Model):
         db_table = 'dataset_user'
 
 
-# 
 class Hit(models.Model):
     # FK to celery_results_task_result.task_id
     place = models.ForeignKey(Place, on_delete=models.CASCADE)
