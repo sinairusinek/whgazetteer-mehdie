@@ -209,8 +209,8 @@ class Dataset(models.Model):
         return result
 
     @property
-    def tasks(self):  # TODO fix
-        return TaskResult.objects.filter(task_args='[' + str(self.id) + ']', task_name__startswith='align')
+    def tasks(self):
+        return TaskResult.objects.filter(task_args='(' + str(self.id) + ',)', task_name__startswith='align_wdlocal')
 
     # tasks stats
     @property
