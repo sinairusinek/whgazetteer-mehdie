@@ -8,6 +8,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.http import FileResponse, JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.generic import View
+from sentry_sdk import capture_exception
 
 from chardet import detect
 from frictionless import validate as fvalidate
@@ -64,9 +65,9 @@ def downloader(request, *args, **kwargs):
         # return render(request, 'datasets/ds_meta.html', context=context)
         return HttpResponse(json.dumps(obj), content_type='application/json')
     elif request.method == 'POST' and not request.is_ajax:
-        ...
+        pass
     elif request.method == 'GET':
-        ...
+        pass
 
 
 """ deprecatING (still used from collection download modal ) """
@@ -85,12 +86,7 @@ def download_augmented(request, *args, **kwargs):
 
     features = ds.places.all().order_by('id')
 
-    start = datetime.datetime.now()
     if fileobj.format == 'delimited' and req_format in ['tsv', 'delimited']:
-        # get header
-        header = ds.files.all().order_by('id')[0].header
-        # make file name
-        # fn = 'media/user_'+user+'/'+ds.label+'_aug_'+date+'.tsv'
         fn = 'media/downloads/' + username + '_' + dslabel + '_' + date + '.tsv'
 
         def augLinks(linklist):
@@ -103,10 +99,8 @@ def download_augmented(request, *args, **kwargs):
             gobj = {'new': []}
             for g in qs_geoms:
                 if not g.task_id:
-                    # it's an original
                     gobj['lonlat'] = g.jsonb['coordinates']
                 else:
-                    # it's an aug/add
                     gobj['new'].append({"id": g.jsonb['citation']['id'], "coordinates": g.jsonb['coordinates'][0]})
             return gobj
 
@@ -114,7 +108,6 @@ def download_augmented(request, *args, **kwargs):
         with open(fn, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t', quotechar='', quoting=csv.QUOTE_NONE)
             writer.writerow(['id', 'whg_pid', 'title', 'ccodes', 'lon', 'lat', 'added', 'matches'])
-            # writer.writerow(header)
             for f in features:
                 geoms = f.geoms.all()
                 gobj = augGeom(geoms)
@@ -128,7 +121,6 @@ def download_augmented(request, *args, **kwargs):
                        str(augLinks(f.links.all()))
                        ]
                 writer.writerow(row)
-                # progress_recorder.set_progress(i + 1, len(features), description="tsv progress")
         response = FileResponse(open(fn, 'rb'), content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="' + os.path.basename(fn) + '"'
         return response
@@ -208,11 +200,8 @@ def download_augmented(request, *args, **kwargs):
                     if g['type'] != 'GeometryCollection' and g['coordinates'] == []:
                         row[0].pop('geometry')
                     result['features'].append(row[0])
-                    # progress_recorder.set_progress(i + 1, len(features), description="lpf progress")
                 outfile.write(json.dumps(result, indent=2))
-                # outfile.write(json.dumps(result))
 
-        end = datetime.datetime.now()
         # response is reopened file
         response = FileResponse(open(fn, 'rb'), content_type='text/json')
         response['Content-Disposition'] = 'attachment; filename="' + os.path.basename(fn) + '"'
@@ -225,17 +214,14 @@ def download_augmented(request, *args, **kwargs):
 
 def download_file(request, *args, **kwargs):
     ds = get_object_or_404(Dataset, pk=kwargs['id'])
-    fileobj = ds.files.all().order_by('-rev')[0]
-    fn = 'media/' + fileobj.file.name
-    file_handle = fileobj.file.open()
+    file_obj = ds.files.all().order_by('-rev')[0]
+    file_handle = file_obj.file.open()
     # set content type
-    response = FileResponse(file_handle, content_type='text/csv' if fileobj.format == 'delimited' else 'text/json')
-    response['Content-Disposition'] = 'attachment; filename="' + fileobj.file.name + '"'
-
+    response = FileResponse(file_handle, content_type='text/csv' if file_obj.format == 'delimited' else 'text/json')
+    response['Content-Disposition'] = 'attachment; filename="' + file_obj.file.name + '"'
     return response
 
 
-#
 # experiment (deprecated?)
 def download_augmented_slow(request, *args, **kwargs):
     user = request.user.username
@@ -445,39 +431,26 @@ def timespansReduce(tsl):
     for ts in tsl:
         s = ts['start'][list(ts['start'].keys())[0]]
         s_yr = s[:5] if s[0] == '-' else s[:4]
-        # e = ts['end'][list(ts['end'].keys())[0]] \
-        # if 'end' in ts else s
-        # lpf imports from tsv exports can have '' in end
         end = ts['end'][list(ts['end'].keys())[0]] if 'end' in ts else None  # no end
         e = end if end and end != '' else s
         e_yr = e[:5] if e[0] == '-' else e[:4]
         result.append([int(s_yr), int(e_yr)])
-        # s = int(ts['start'][list(ts['start'].keys())[0]])
-        # e = int(ts['end'][list(ts['end'].keys())[0]]) \
-        # if 'end' in ts else s
-        # result.append([s,e])
     return result
 
 
-#
 # called by ds_insert_lpf()
 # TODO: replicate outcome of parsedates_tsv()
-#
 def parsedates_lpf(feat):
     intervals = []
-    # gather all when elements
-    # global when?
+
     if 'when' in feat and 'timespans' in feat['when']:
         try:
             intervals += timespansReduce(feat['when']['timespans'])
-        except:
-            ...
+        except Exception as e:
+            pass
 
-    # which feat keys might have a when?
-    possible_keys = list(set(feat.keys() & \
-                             set(['names', 'types', 'relations', 'geometry'])))
-    # first, geometry
-    # collections...
+    ls = ['names', 'types', 'relations', 'geometry']
+    possible_keys = list(set(feat.keys() & set(ls)))
     geom = feat['geometry'] if 'geometry' in feat else None
     if geom and geom['type'] == 'GeometryCollection':
         for g in geom['geometries']:
@@ -535,7 +508,8 @@ def validate_lpf(tempfn, format):
                     format_checker=draft7_format_checker
                 )
                 count_ok += 1
-            except:
+            except Exception as e:
+
                 err = sys.exc_info()
                 result["errors"].append({"feat": countrows, 'error': err[1]})
         result['count'] = countrows
@@ -595,11 +569,9 @@ class HitRecord(object):
         self.dataset = dataset
 
     def __str__(self):
-        import json
         return json.dumps(str(self.__dict__))
 
     def toJSON(self):
-        import json
         return json.loads(json.dumps(self.__dict__, indent=2))
 
 

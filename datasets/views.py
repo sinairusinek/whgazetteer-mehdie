@@ -1,23 +1,40 @@
-from django.conf import settings
+import math
+import shutil
+import tempfile
+import requests
+import pandas as pd
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db.utils import DataError
 from django.forms import modelformset_factory
-from django.http import HttpResponseServerError, HttpResponseRedirect
+from django.http import HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.generic import (CreateView, ListView, UpdateView, DeleteView, DetailView)
 from sentry_sdk import capture_exception
 from django.db import transaction
-
-# external
-from celery import current_app as celapp
 from django_celery_results.models import TaskResult
-# from chardet import detect
-import codecs, math, mimetypes, os, re, shutil, sys, tempfile
 from elasticsearch7 import Elasticsearch
+from pathlib import Path
+from shutil import copyfile
+
+from places.models import *
+from datasets.utils import *
+from areas.models import Area
+from main.models import Log, Comment
+from resources.models import Resource
+from datasets.models import DatasetFile
+from celery import current_app as celapp
+from collection.models import Collection
+from main.choices import AUTHORITY_BASEURI
+from datasets.static.hashes.parents import ccodes as cchash
+from datasets.static.hashes import mimetypes_plus as mthash_plus
+from datasets.tasks import align_wdlocal, align_idx, align_tgn, maxID
+from elastic.es_utils import makeDoc, removePlacesFromIndex, replaceInIndex
+from datasets.forms import HitModelForm, DatasetDetailModelForm, DatasetCreateModelForm
 
 es = Elasticsearch([{'host': 'localhost',
                      'port': 9200,
@@ -26,29 +43,6 @@ es = Elasticsearch([{'host': 'localhost',
                      'max_retries': 10,
                      'retry_on_timeout': True
                      }])
-import pandas as pd
-from pathlib import Path
-from shutil import copyfile
-import requests
-import os
-
-from areas.models import Area
-from collection.models import Collection
-from datasets.forms import HitModelForm, DatasetDetailModelForm, DatasetCreateModelForm
-from datasets.models import Dataset, Hit, DatasetFile
-from datasets.static.hashes import mimetypes_plus as mthash_plus
-from datasets.static.hashes.parents import ccodes as cchash
-
-# NB these task names ARE in use; they are generated dynamically
-from datasets.tasks import align_wdlocal, align_idx, align_tgn, maxID
-
-from datasets.utils import *
-from elastic.es_utils import makeDoc, removePlacesFromIndex, replaceInIndex, removeDatasetFromIndex
-from main.choices import AUTHORITY_BASEURI
-from main.models import Log, Comment
-from places.models import *
-from resources.models import Resource
-from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 """
   email various, incl. Celery down notice
