@@ -707,7 +707,10 @@ def ds_recon(request, pk):
         if auth == 'match_data':
             m_dataset = request.POST['m_dataset']
             p_dataset = request.POST['p_dataset']
-            csv_url, status_code = mehdi_er(m_dataset, p_dataset)
+            try:
+                csv_url, status_code = mehdi_er(m_dataset, p_dataset)
+            except Exception as e:
+                return HttpResponse('Something went wrong with service "mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/" ')
             if status_code > 200:
                 return HttpResponse('Error with Datasets, check again')
             process_er(csv_url)
