@@ -689,8 +689,12 @@ def mehdi_er(d1, d2):
         'second_csv': open(p_csv, 'rb')
     }
 
-    r = requests.post(url='https://mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/', files=files)
-    return r.json()["csv download url"], r.status_code
+    response = requests.post(url='https://mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/', files=files)
+
+    if response.status_code == 400:
+        return response.json(), response.status_code
+
+    return response.json()["csv download url"], response.status_code
 
 
 def process_er(url):
@@ -711,8 +715,23 @@ def ds_recon(request, pk):
                 csv_url, status_code = mehdi_er(m_dataset, p_dataset)
             except Exception as e:
                 return HttpResponse('Something went wrong with service "mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/" ')
-            if status_code > 200:
+            if status_code > 200 and status_code != 400:
                 return HttpResponse('Error with Datasets, check again')
+            if status_code == 400:
+                d1 = DatasetFile.objects.get(dataset_id=m_dataset)
+                d2 = DatasetFile.objects.get(dataset_id=p_dataset)
+                if csv_url['detail']['dataset1']:
+                    return HttpResponse("The dataset matching service expects the dataset to contain several fields."
+                                        f" {d1.dataset_id.title}"
+                                        f" is missing the fields {', '.join([field for field in csv_url['detail']['dataset1']])}."
+                                        f" If possible, we will proceed with the given fields."
+                                        )
+                if csv_url['detail']['dataset2']:
+                    return HttpResponse("The dataset matching service expects the dataset to contain several fields."
+                                        f" {d2.dataset_id.title}"
+                                        f" is missing the fields {', '.join([field for field in csv_url['detail']['dataset2']])}."
+                                        f" If possible, we will proceed with the given fields."
+                                        )
             process_er(csv_url)
             messages.add_message(request, messages.INFO,
                                  "<span class='text-success'>Your ER reconciliation task has been processsed.</span><br/>Download the csv file using the link below, results will appear below (you may have to refresh screen). <br/> <a href='{}'>Download Match File</a>".format(
