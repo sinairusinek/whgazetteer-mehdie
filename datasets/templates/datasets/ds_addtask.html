@@ -174,8 +174,8 @@
                   </p>
                   <p>
                     <select id="select_m_dataset" required name="m_dataset" class="custom-select-sm" style="width:auto;">
-{#                      <option value="0" selected="selected">Select from the List of your datasets</option>#}
-{#                      <option disabled>___________</option>#}
+                      <option value="0" selected="selected">Select from the List of your datasets</option>
+                      <option disabled>___________</option>
                       {% for dataset in my_dataset %}
                         <option value="{{ dataset.id }}">{{ dataset.title }}</option>
                       {% endfor %}
@@ -192,11 +192,11 @@
                   </p>
                   <p>
                     <select id="select_p_dataset" required name="p_dataset" class="custom-select-sm" style="width:auto;">
-{#                      <option value="0" selected="selected">Select from the List Public datasets</option>#}
-{#                      <option disabled>___________</option>#}
+                      <option value="0" selected="selected">Select from the List Public datasets</option>
+                      <option disabled>___________</option>
 
-                      {% comment %} <option></option> {% endcomment %}
-                      {% for dataset in my_dataset %}
+{#                      {% comment %} <option></option> {% endcomment %}#}
+                      {% for dataset in public_dataset %}
                         <option value="{{ dataset.id }}">{{ dataset.title }}</option>
                       {% endfor %}
                     </select><span class="ml-2"><b>or...</b></span></p>
