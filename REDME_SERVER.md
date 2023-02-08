@@ -10,6 +10,10 @@ sudo git pull origin main
 
 sudo systemctl restart gunicorn.service
 
+# Gunicorn log
+
+sudo journalctl --unit=gunicorn | tail -n 300
+
 # Celery restart
 
 sudo supervisorctl restart celery
