@@ -709,8 +709,21 @@ def ds_recon(request, pk):
     if request.method == 'POST' and request.POST:
         auth = request.POST['recon']
         if auth == 'match_data':
+
             m_dataset = request.POST['m_dataset']
             p_dataset = request.POST['p_dataset']
+
+            if m_dataset == '0' and p_dataset == '0':
+                return HttpResponse('You have not selected a dataset')
+
+            if m_dataset != '0' and p_dataset != '0':
+                return HttpResponse('You must select one dataset')
+
+            if m_dataset == '0':
+                m_dataset = pk
+            else:
+                p_dataset = pk
+
             try:
                 csv_url, status_code = mehdi_er(m_dataset, p_dataset)
             except Exception as e:
@@ -2569,7 +2582,8 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
         # pre-defined UN regions
         predefined = Area.objects.all().filter(type='predefined').values('id', 'title')
 
-        my_dataset = Dataset.objects.filter(owner=self.request.user)
+        my_dataset = Dataset.objects.filter(owner=self.request.user).exclude(id=id_)
+        public_dataset = Dataset.objects.filter(public=True).exclude(owner=self.request.user)
 
         gothits = {}
         for t in ds.tasks.filter(status='SUCCESS'):
@@ -2615,7 +2629,7 @@ class DatasetAddTaskView(LoginRequiredMixin, DetailView):
         remaining = {}
         for t in active_tasks.items():
             remaining[t[0][6:]] = t[1][0]['total']
-        context['public_dataset'] = []
+        context['public_dataset'] = public_dataset
         context['my_dataset'] = my_dataset
         context['region_list'] = predefined
         context['ds'] = ds
