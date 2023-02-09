@@ -27,12 +27,23 @@ from elasticsearch7 import Elasticsearch
 from whg.celery import app
 
 ## global for all es connections in this file?
-es = Elasticsearch([{'host': 'localhost',
+es = Elasticsearch([{'host': '0.0.0.0',
                      'port': 9200,
                      'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
                      'timeout': 30,
                      'max_retries': 10,
                      'retry_on_timeout': True}])
+
+# es = Elasticsearch([ # TODO for test
+#     {
+#         "host": "34.147.87.121",
+#         "port": 9200,
+#         'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
+#         "timeout": 30,
+#         "max_retries": 10,
+#         "retry_on_timeout": True
+#     }
+# ])
 
 
 @shared_task(name="testy")
@@ -906,6 +917,7 @@ def es_lookup_wdlocal(qobj, *args, **kwargs):
         res0 = es.search(index="wd", body=q0)
         hits0 = res0['hits']['hits']
     except Exception as e:
+        hits0 = []
         capture_exception(e)
 
     if len(hits0) > 0:
@@ -922,6 +934,7 @@ def es_lookup_wdlocal(qobj, *args, **kwargs):
             res1 = es.search(index="wd", body=q1)
             hits1 = res1['hits']['hits']
         except Exception as e:
+            hits1 = []
             capture_exception(e)
         if len(hits1) > 0:
             for hit in hits1:
@@ -933,6 +946,7 @@ def es_lookup_wdlocal(qobj, *args, **kwargs):
                 res2 = es.search(index="wd", body=q2)
                 hits2 = res2['hits']['hits']
             except Exception as e:
+                hits2 = []
                 capture_exception(e)
             if len(hits2) > 0:
                 for hit in hits2:
