@@ -176,7 +176,7 @@ class Dataset(models.Model):
     @property
     def recon_status(self):
         tasks = TaskResult.objects.filter(
-            task_args='[' + str(self.id) + ']',
+            task_args='(' + str(self.id) + ',)',
             task_name__startswith='align',
             status='SUCCESS')
         result = {}
@@ -210,7 +210,7 @@ class Dataset(models.Model):
 
     @property
     def tasks(self):
-        return TaskResult.objects.filter(task_args='(' + str(self.id) + ',)', task_name__startswith='align_wdlocal')
+        return TaskResult.objects.filter(task_args='(' + str(self.id) + ',)', task_name__startswith='align')
 
     # tasks stats
     @property
