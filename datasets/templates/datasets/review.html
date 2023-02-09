@@ -89,26 +89,36 @@
         <div id="review_record" class="col-sm-4 pl-0 small">
           <div class="bg-secondary font-weight-bold pl-2 text-light">{{ dataset_label }}</div>
           <div id="place_record" class="mb-2">
+
+
+            <div class="pl-2 pr-2 mb-1 matchbar">
+                <div class="match_radio custom-control custom-radio"  data-id="{{ form.authrecord_id.value }}">
+                  {% if form.json.value|get:"geoms"|length > 0 %}
+                    <span class="mr-2 globeflash">
+                    <!--{ if form.json.value|get:"geoms" != Null }-->
+                      <a class="geolink" rel="tooltip"
+                        {% if ds_label == 'tgn_filtered_01' or authority == 'whg' or authority == 'idx'%}
+                          id="{{ form.json.value|get:"place_id" }}"
+                        {% else %}
+                          id="{{ form.authrecord_id.value }}"
+                        {% endif %}
+                        href='javascript:{ zoomTo("{{ form.authrecord_id.value }}") }' title="Flash map marker">
+                        {% fontawesome_icon 'globe' color='#000' %}</a>
+                    </span>
+                  {% endif %}
+                  <span class="inline">{{ form.match }}</span>
+                  {% if authority == 'idx' %}
+                    <button type="button"
+                      data-id="{{ form.json.value|get:"place_id" }}"
+                      class="create-comment-review btn btn-sm" style="background-color:oldlace;">
+                    {% fontawesome_icon 'edit' color='#336699' %}</button>
+                  {% endif %}
+                  </span>
+                </div>
+            </div>
+
             <div>
               <input type="hidden" name="place_id" value="{{ record.id }}" />
-
-
-
-
-              <span class="mr-2 globeflash">
-              <!--{ if form.json.value|get:"geoms" != Null }-->
-                <a class="geolink" rel="tooltip"
-                  {% if ds_label == 'tgn_filtered_01' or authority == 'whg' or authority == 'idx'%}
-                    id="{{ form.json.value|get:"place_id" }}"
-                  {% else %}
-                    id="{{ form.authrecord_id.value }}"
-                  {% endif %}
-                  href='javascript:{ zoomTo("{{ form.authrecord_id.value }}") }' title="Flash map marker">
-                  {% fontawesome_icon 'globe' color='#000' %}</a>
-              </span>
-
-
-
               <span>
                 <h4 class="text-danger">{{ record.title }}
 	                {% if record.comment_set.count == 0 %}
