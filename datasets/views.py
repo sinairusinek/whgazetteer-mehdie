@@ -758,7 +758,7 @@ def ds_recon(request, pk):
         # previous successful task of this type?
         #   wdlocal? archive previous, scope = unreviewed
         #   idx? scope = unindexed
-        previous = ds.tasks.filter(task_name='align_' + auth, status='SUCCESS')
+        previous = ds.tasks.filter(task_name__startswith='align_' + auth, status='SUCCESS')
         prior = request.POST['prior'] if 'prior' in request.POST else 'na'
         if previous.count() > 0:
             if auth == 'idx':
