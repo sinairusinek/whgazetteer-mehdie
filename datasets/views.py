@@ -427,7 +427,7 @@ def review(request, pk, tid, passnum):
     # build formset from hits, add to context
     HitFormset = modelformset_factory(
         Hit,
-        fields=('id', 'authority', 'authrecord_id', 'query_pass', 'score', 'json'),
+        fields=('id', 'authority', 'authrecord_id', 'query_pass', 'score', 'json', 'relation_type'),
         form=HitModelForm, extra=0)
     formset = HitFormset(request.POST or None, queryset=raw_hits)
     context['formset'] = formset
@@ -453,7 +453,7 @@ def review(request, pk, tid, passnum):
             for x in range(len(hits)):
                 hit = hits[x]['id']
                 # is this hit a match?
-                if hits[x]['match'] not in ['none']:
+                if hits[x]['relation_type'] not in ['none']:
                     matches += 1
                     # if wd or tgn, write place_geom, place_link record(s) now
                     # IF someone didn't just review it!
@@ -481,12 +481,12 @@ def review(request, pk, tid, passnum):
                         # create single PlaceLink for matched authority record
                         # TODO: this if: condition handled already?
                         if tid not in place_post.links.all().values_list('task_id', flat=True):
-                            link = PlaceLink.objects.create(
+                            PlaceLink.objects.create(
                                 place=place_post,
                                 task_id=tid,
                                 src_id=place.src_id,
                                 jsonb={
-                                    "type": hits[x]['match'],
+                                    "type": hits[x]['relation_type'],
                                     "identifier": link_uri(task.task_name, hits[x]['authrecord_id'] \
                                         if hits[x]['authority'] != 'whg' else hits[x]['json']['place_id'])
                                 }
@@ -503,7 +503,7 @@ def review(request, pk, tid, passnum):
                                         task_id=tid,
                                         src_id=place.src_id,
                                         jsonb={
-                                            "type": hits[x]['match'],
+                                            "type": hits[x]['relation_type'],
                                             "identifier": l.strip()
                                         }
                                     )
@@ -523,6 +523,7 @@ def review(request, pk, tid, passnum):
                 # in any case, flag hit as reviewed...
                 hitobj = get_object_or_404(Hit, id=hit.id)
                 hitobj.reviewed = True
+                hitobj.relation_type = hits[x]['relation_type']
                 hitobj.save()
 
             # handle accessioning match results
@@ -592,7 +593,7 @@ def write_wd_pass0(request, tid):
         if hasGeom and kwargs['aug_geom'] == 'on' \
                 and tid not in place.geoms.all().values_list('task_id', flat=True):
             for g in h.json['geoms']:
-                pg = PlaceGeom.objects.create(
+                PlaceGeom.objects.create(
                     place=place,
                     task_id=tid,
                     src_id=place.src_id,
@@ -609,7 +610,7 @@ def write_wd_pass0(request, tid):
         # add PlaceLink record for wikidata hit if not already there
         if 'wd:' + h.authrecord_id not in authids:
             link_counter += 1
-            link = PlaceLink.objects.create(
+            PlaceLink.objects.create(
                 place=place,
                 task_id=tid,
                 src_id=place.src_id,

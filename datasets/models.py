@@ -328,6 +328,7 @@ class Hit(models.Model):
     # authority record identifier (could be uri)
     authrecord_id = models.CharField(max_length=255)
 
+    relation_type = models.CharField(choices=HitRelationType, max_length=255, verbose_name='Relation type', null=True)
     # json response; parse later according to authority
     json = JSONField(blank=True, null=True)
     geom = JSONField(blank=True, null=True)
