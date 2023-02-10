@@ -3,30 +3,26 @@
 from django import forms
 from django.db import models
 from datasets.models import Dataset, Hit, DatasetFile
-from main.choices import FORMATS, STATUS_FILE
-
-MATCHTYPES = [
-    ('closeMatch', 'closeMatch'),
-    ('none', 'no match'),
-]
+from main.choices import FORMATS, STATUS_FILE, HitRelationType
 
 
 class HitModelForm(forms.ModelForm):
     match = forms.CharField(
         initial='none',
-        widget=forms.RadioSelect(choices=MATCHTYPES))
+        widget=forms.RadioSelect(choices=HitRelationType))
 
     class Meta:
         model = Hit
         fields = ['id', 'authority', 'authrecord_id',
-                  'query_pass', 'score', 'json']
+                  'query_pass', 'score', 'json', 'relation_type']
         hidden_fields = ['id', 'authority',
-                         'authrecord_id', 'query_pass', 'score', 'json']
+                         'authrecord_id', 'query_pass', 'score', 'json', 'relation_type']
         widgets = {
             'id': forms.HiddenInput(),
             'authority': forms.HiddenInput(),
             'authrecord_id': forms.HiddenInput(),
-            'json': forms.HiddenInput()
+            'json': forms.HiddenInput(),
+            # 'relation_type': forms.TextInput(),
         }
 
     def __init__(self, *args, **kwargs):

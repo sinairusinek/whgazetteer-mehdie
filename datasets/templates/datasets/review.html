@@ -182,7 +182,7 @@
           </div>
         </div>
         <!--available: ['whg_id', 'place_id', 'src_id', 'title', 'dataset', 'variants', 'types', 'ccodes', 'parents', 'descriptions', 'geoms', 'timespans', 'links']-->
-        <div id="review_list" class="col-sm-8 pr-0">
+          <div id="review_list" class="col-sm-8 pr-0">
             {% for form in formset %}
               <input type="hidden" name="id" value='{{ form.id.value }}'></input>
               <input type="hidden" name="authrecord_id" value='{{ form.authrecord_id.value }}'></input>
@@ -206,9 +206,9 @@
                         {% fontawesome_icon 'globe' color='#000' %}</a>
                     </span>
                   {% endif %}
-                  <span class="inline">{{ form.match }}</span>
+                    {{ form.relation_type }}
 
-                  {% if authority == 'idx' %}
+                    {% if authority == 'idx' %}
                     <button type="button"
                       data-id="{{ form.json.value|get:"place_id" }}"
                       class="create-comment-review btn btn-sm" style="background-color:oldlace;">
