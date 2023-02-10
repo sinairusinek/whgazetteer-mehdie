@@ -2498,6 +2498,8 @@ class DatasetReconcileView(LoginRequiredMixin, DetailView):
 
         context['ds'] = ds
         context['tasks'] = ds_tasks
+        context['collaborators'] = ds.collaborators.all()
+        context['owners'] = ds.owners
 
         context['beta_or_better'] = True if self.request.user.groups.filter(
             name__in=['beta', 'admins']).exists() else False
