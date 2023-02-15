@@ -93,6 +93,7 @@ HitRelationType = [
     ("reverse_part_of", "Reverse part of"),
     ("reverse_located_in", "Reverse located in"),
     ("borders_with", "Borders with"),
+    ("different", "Different"),
 ]
 
 FORMATS = [
