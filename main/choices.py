@@ -9,6 +9,7 @@ AREATYPES = {
 }
 
 AUTHORITIES = [
+    ('md', 'Match data'),
     ('tgn', 'Getty TGN'),
     ('dbp', 'DBpedia'),
     ('gn', 'Geonames'),

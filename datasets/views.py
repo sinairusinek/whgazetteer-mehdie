@@ -32,7 +32,7 @@ from collection.models import Collection
 from main.choices import AUTHORITY_BASEURI
 from datasets.static.hashes.parents import ccodes as cchash
 from datasets.static.hashes import mimetypes_plus as mthash_plus
-from datasets.tasks import align_wdlocal, align_idx, align_tgn, maxID
+from datasets.tasks import align_wdlocal, align_idx, align_tgn, maxID, align_match_data
 from elastic.es_utils import makeDoc, removePlacesFromIndex, replaceInIndex
 from datasets.forms import HitModelForm, DatasetDetailModelForm, DatasetCreateModelForm
 
@@ -328,14 +328,14 @@ def review(request, pk, tid, passnum):
         pass_int = int(passnum[4])
         # if no unreviewed left, go to next pass
         passnum = passnum if cnt_pass > 0 else 'pass' + str(pass_int + 1)
-        hitplaces = Hit.objects.values('place_id').filter(
+        hitplaces = Hit.objects.values_list('place_id', flat=True).filter(
             task_id=tid,
             reviewed=False,
             query_pass=passnum
         )
     else:
         # all unreviewed
-        hitplaces = Hit.objects.values('place_id').filter(task_id=tid, reviewed=False)
+        hitplaces = Hit.objects.values_list('place_id', flat=True).filter(task_id=tid, reviewed=False)
 
     # set review page returned
     if auth in ['whg', 'idx']:
@@ -344,8 +344,13 @@ def review(request, pk, tid, passnum):
         review_page = 'review.html'
 
     #
+    # review_field = 'review_whg' if auth in ['whg', 'idx'] else \
+    #     'review_wd' if auth.startswith('wd') else 'review_tgn'
+
     review_field = 'review_whg' if auth in ['whg', 'idx'] else \
-        'review_wd' if auth.startswith('wd') else 'review_tgn'
+        'review_wd' if auth.startswith('wd') else \
+            'review_md' if auth.startswith('match_data') else 'review_tgn'
+
     lookup = '__'.join([review_field, 'in'])
     """
     2 = deferred; 1 = reviewed, 0 = unreviewed; NULL = no hits
@@ -355,7 +360,8 @@ def review(request, pk, tid, passnum):
     status = [2] if passnum == 'def' else [0]
 
     # unreviewed place objects from place_ids (a single pass or all)
-    record_list = ds.places.order_by('id').filter(**{lookup: status}, pk__in=hitplaces)
+    # record_list = ds.places.order_by('id').filter(**{lookup: status}, pk__in=hitplaces)
+    record_list = ds.places.order_by('id').filter(pk__in=hitplaces)
 
     # no records left for pass (or in deferred queue)
     if len(record_list) == 0:
@@ -677,7 +683,7 @@ def tsv_2_csv(data):
     return f'media/{user}/{name}.csv'
 
 
-def mehdi_er(d1, d2):
+def mehdi_er(d1, d2, dataset_id, aug_geom):
     d1 = DatasetFile.objects.get(dataset_id=d1)
     d2 = DatasetFile.objects.get(dataset_id=d2)
     m_dataset = d1.file.name
@@ -695,6 +701,13 @@ def mehdi_er(d1, d2):
     if response.status_code == 400:
         return response.json(), response.status_code
 
+    align_match_data.delay(
+        dataset_id,
+        dataset_id=dataset_id,
+        csv_url=response.json()["csv download url"],
+        aug_geom=aug_geom
+    )
+
     return response.json()["csv download url"], response.status_code
 
 
@@ -709,6 +722,7 @@ def ds_recon(request, pk):
 
     if request.method == 'POST' and request.POST:
         auth = request.POST['recon']
+        aug_geom = request.POST['geom'] if 'geom' in request.POST else ''
         if auth == 'match_data':
 
             m_dataset = request.POST['m_dataset']
@@ -725,10 +739,10 @@ def ds_recon(request, pk):
             else:
                 p_dataset = pk
 
-            try:
-                csv_url, status_code = mehdi_er(m_dataset, p_dataset)
-            except Exception as e:
-                return HttpResponse('Something went wrong with service "mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/" ')
+            # try:
+            csv_url, status_code = mehdi_er(m_dataset, p_dataset, ds.id, aug_geom)
+            # except Exception as e:
+            #     return HttpResponse('Something went wrong with service "mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/" ')
             if status_code > 200 and status_code != 400:
                 return HttpResponse('Error with Datasets, check again')
             if status_code == 400:
@@ -778,7 +792,7 @@ def ds_recon(request, pk):
         # TODO: let this vary per task?
         region = request.POST['region']  # pre-defined UN regions
         userarea = request.POST['userarea']  # from ccodes, or drawn
-        aug_geom = request.POST['geom'] if 'geom' in request.POST else ''  # on == write geom if matched
+        # on == write geom if matched
         bounds = {
             "type": ["region" if region != "0" else "userarea"],
             "id": [region if region != "0" else userarea]}

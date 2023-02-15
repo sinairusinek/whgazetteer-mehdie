@@ -27,23 +27,23 @@ from elasticsearch7 import Elasticsearch
 from whg.celery import app
 
 ## global for all es connections in this file?
-es = Elasticsearch([{'host': '0.0.0.0',
-                     'port': 9200,
-                     'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
-                     'timeout': 30,
-                     'max_retries': 10,
-                     'retry_on_timeout': True}])
+# es = Elasticsearch([{'host': '0.0.0.0',
+#                      'port': 9200,
+#                      'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
+#                      'timeout': 30,
+#                      'max_retries': 10,
+#                      'retry_on_timeout': True}])
 
-# es = Elasticsearch([ # TODO for test
-#     {
-#         "host": "34.147.87.121",
-#         "port": 9200,
-#         'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
-#         "timeout": 30,
-#         "max_retries": 10,
-#         "retry_on_timeout": True
-#     }
-# ])
+es = Elasticsearch([  # TODO for test
+    {
+        "host": "34.147.87.121",
+        "port": 9200,
+        'api_key': (settings.ES_APIKEY_ID, settings.ES_APIKEY_KEY),
+        "timeout": 30,
+        "max_retries": 10,
+        "retry_on_timeout": True
+    }
+])
 
 
 @shared_task(name="testy")
@@ -512,6 +512,8 @@ def normalize(h, auth, language=None):
 
         # no minmax in hit if no inception value(s)
         rec.minmax = [h['minmax']['gte'], h['minmax']['lte']] if 'minmax' in h else []
+    elif auth == 'match_data':
+        rec = HitRecord(h.get('place_id'), h['type'], h['src_id'], h['title'])
 
 
     elif auth == 'tgn':
@@ -679,6 +681,79 @@ parse, write Hit records for review
 """
 
 
+@app.task(name='align_match_data')
+def align_match_data(pk, *args, **kwargs):
+    start = datetime.datetime.now()
+    dataset = get_object_or_404(Dataset, id=pk)
+    csv_data = pd.read_csv(kwargs.get('csv_url'))
+
+    places = dataset.places.all()  # TODO or ds.places.all()
+    count_hit = 0
+    for data in csv_data.values:
+        loc = {}
+        places = places.filter(src_id=data[1])
+        if places.exists():
+            place = places.first()
+            qobj = {"place_id": place.id,
+                    "src_id": place.src_id,
+                    "type": "match_data",
+                    "title": place.title}
+            [variants, geoms, types, ccodes, parents] = [[], [], [], [], []]
+
+            for c in place.ccodes:
+                ccodes.append(c.upper())
+            qobj['countries'] = place.ccodes
+
+            for t in place.types.all():
+                types.append(t.jsonb['identifier'])
+            qobj['placetypes'] = types
+
+            for name in place.names.all():
+                variants.append(name.toponym)
+            qobj['variants'] = variants
+
+            if len(place.related.all()) > 0:
+                for rel in place.related.all():
+                    if rel.jsonb['relationType'] == 'gvp:broaderPartitive':
+                        parents.append(rel.jsonb['label'])
+                qobj['parents'] = parents
+            else:
+                qobj['parents'] = []
+
+            if len(place.geoms.all()) > 0:
+                g_list = [g.jsonb for g in place.geoms.all()]
+                # make everything a simple polygon hull for spatial filter
+                qobj['geom'] = hully(g_list)
+
+            Hit.objects.create(
+                authority='md',
+                authrecord_id=data[1],
+                dataset=dataset,
+                place=place,
+                task_id=align_match_data.request.id,
+                query_pass='pass1',
+                json=normalize(qobj, 'md'),
+                src_id=place.src_id,
+                score=1.0,
+                geom=loc,
+                reviewed=False,
+                matched=False,
+            )
+            count_hit += 1
+    end = datetime.datetime.now()
+
+    return {
+        'count': dataset.places.all().count(),
+        'got_hits': count_hit,
+        'total_hits': len(csv_data.values),
+        'pass1': count_hit,
+        'pass2': 0,  # TODO fix
+        'pass3': 0,
+        'no_hits': {'count': len(csv_data.values) - count_hit},
+        'elapsed': elapsed(end - start)
+    }
+
+
 @app.task(name="align_tgn")
 def align_tgn(pk, *args, **kwargs):
     task_id = align_tgn.request.id
@@ -767,7 +842,6 @@ def align_tgn(pk, *args, **kwargs):
                     place=place,
                     task_id=align_tgn.request.id,
                     query_pass=hit['pass'],
-                    # prepare for consistent display in review screen
                     json=normalize(hit['_source'], 'tgn'),
                     src_id=qobj['src_id'],
                     score=hit['_score'],
@@ -1097,7 +1171,7 @@ def align_wdlocal(pk, **kwargs):
         total_hits
     )
 
-    return hit_parade['summary']
+    # return hit_parade['summary']
 
 
 """
