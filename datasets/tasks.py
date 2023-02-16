@@ -685,61 +685,70 @@ parse, write Hit records for review
 def align_match_data(pk, *args, **kwargs):
     start = datetime.datetime.now()
     dataset = get_object_or_404(Dataset, id=pk)
+    dataset_2 = get_object_or_404(Dataset, id=kwargs.get('dataset_2'))
+
     csv_data = pd.read_csv(kwargs.get('csv_url'))
 
-    places = dataset.places.all()  # TODO or ds.places.all()
+    places = dataset.places.all()
+    places_2 = dataset_2.places.all()
     count_hit = 0
     for data in csv_data.values:
-        loc = {}
-        places = places.filter(src_id=data[1])
-        if places.exists():
-            place = places.first()
-            qobj = {"place_id": place.id,
-                    "src_id": place.src_id,
-                    "type": "match_data",
-                    "title": place.title}
-            [variants, geoms, types, ccodes, parents] = [[], [], [], [], []]
+        place = places.filter(src_id=data[0])
+        place_2 = places_2.filter(src_id=data[1])
 
-            for c in place.ccodes:
-                ccodes.append(c.upper())
-            qobj['countries'] = place.ccodes
+        if not (place.exists() and place_2.exists()):
+            continue
+        place = place.first()
+        place_2 = place_2.first()
 
-            for t in place.types.all():
-                types.append(t.jsonb['identifier'])
-            qobj['placetypes'] = types
+        qobj = {"place_id": place_2.id,
+                "src_id": place_2.src_id,
+                "type": "match_data",
+                "title": place_2.title,
+                "geom": None
+                }
+        [variants, geoms, types, ccodes, parents] = [[], [], [], [], []]
 
-            for name in place.names.all():
-                variants.append(name.toponym)
-            qobj['variants'] = variants
+        for c in place_2.ccodes:
+            ccodes.append(c.upper())
+        qobj['countries'] = place_2.ccodes
 
-            if len(place.related.all()) > 0:
-                for rel in place.related.all():
-                    if rel.jsonb['relationType'] == 'gvp:broaderPartitive':
-                        parents.append(rel.jsonb['label'])
-                qobj['parents'] = parents
-            else:
-                qobj['parents'] = []
+        for t in place_2.types.all():
+            types.append(t.jsonb['identifier'])
+        qobj['placetypes'] = types
 
-            if len(place.geoms.all()) > 0:
-                g_list = [g.jsonb for g in place.geoms.all()]
-                # make everything a simple polygon hull for spatial filter
-                qobj['geom'] = hully(g_list)
+        for name in place_2.names.all():
+            variants.append(name.toponym)
+        qobj['variants'] = variants
 
-            Hit.objects.create(
-                authority='md',
-                authrecord_id=data[1],
-                dataset=dataset,
-                place=place,
-                task_id=align_match_data.request.id,
-                query_pass='pass1',
-                json=normalize(qobj, 'md'),
-                src_id=place.src_id,
-                score=1.0,
-                geom=loc,
-                reviewed=False,
-                matched=False,
-            )
-            count_hit += 1
+        if len(place_2.related.all()) > 0:
+            for rel in place_2.related.all():
+                if rel.jsonb['relationType'] == 'gvp:broaderPartitive':
+                    parents.append(rel.jsonb['label'])
+            qobj['parents'] = parents
+        else:
+            qobj['parents'] = []
+
+        if len(place_2.geoms.all()) > 0:
+            geoms = [g.jsonb for g in place_2.geoms.all()]
+            # make everything a simple polygon hull for spatial filter
+            qobj['geom'] = hully(geoms)
+
+        Hit.objects.create(
+            authority='md',
+            authrecord_id=data[1],
+            dataset=dataset,
+            place=place,
+            task_id=align_match_data.request.id,
+            query_pass='pass1',
+            json=qobj,
+            src_id=place.src_id,
+            score=data[4],
+            geom=qobj['geom'],
+            reviewed=False,
+            matched=False,
+        )
+        count_hit += 1
     end = datetime.datetime.now()
 
     return {
@@ -1171,7 +1180,7 @@ def align_wdlocal(pk, **kwargs):
         total_hits
     )
 
-    # return hit_parade['summary']
+    return hit_parade['summary']
 
 
 """

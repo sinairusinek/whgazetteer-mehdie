@@ -683,9 +683,9 @@ def tsv_2_csv(data):
     return f'media/{user}/{name}.csv'
 
 
-def mehdi_er(d1, d2, dataset_id, aug_geom):
-    d1 = DatasetFile.objects.get(dataset_id=d1)
-    d2 = DatasetFile.objects.get(dataset_id=d2)
+def mehdi_er(dataset_1, dataset_2, dataset_id, aug_geom):
+    d1 = DatasetFile.objects.get(dataset_id=dataset_1)
+    d2 = DatasetFile.objects.get(dataset_id=dataset_2)
     m_dataset = d1.file.name
     p_dataset = d2.file.name
     m_csv = tsv_2_csv(m_dataset)
@@ -704,6 +704,7 @@ def mehdi_er(d1, d2, dataset_id, aug_geom):
     align_match_data.delay(
         dataset_id,
         dataset_id=dataset_id,
+        dataset_2=dataset_1 if dataset_id == dataset_2 else dataset_2,
         csv_url=response.json()["csv download url"],
         aug_geom=aug_geom
     )
@@ -734,13 +735,11 @@ def ds_recon(request, pk):
             if m_dataset != '0' and p_dataset != '0':
                 return HttpResponse('You must select one dataset')
 
-            if m_dataset == '0':
-                m_dataset = pk
-            else:
-                p_dataset = pk
+            dt_1 = pk
+            dt_2 = m_dataset if m_dataset != '0' else p_dataset
 
             # try:
-            csv_url, status_code = mehdi_er(m_dataset, p_dataset, ds.id, aug_geom)
+            csv_url, status_code = mehdi_er(dt_1, dt_2, ds.id, aug_geom)
             # except Exception as e:
             #     return HttpResponse('Something went wrong with service "mehdi-er-snlwejaxvq-ez.a.run.app/uploadfile/" ')
             if status_code > 200 and status_code != 400:
@@ -2509,7 +2508,7 @@ class DatasetReconcileView(LoginRequiredMixin, DetailView):
 
         # omits FAILURE and ARCHIVED
         ds_tasks = ds.tasks.filter(status='SUCCESS')
-
+        print(ds_tasks)
         context['ds'] = ds
         context['tasks'] = ds_tasks
         context['collaborators'] = ds.collaborators.all()
