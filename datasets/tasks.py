@@ -513,7 +513,75 @@ def normalize(h, auth, language=None):
         # no minmax in hit if no inception value(s)
         rec.minmax = [h['minmax']['gte'], h['minmax']['lte']] if 'minmax' in h else []
     elif auth == 'match_data':
-        rec = HitRecord(h.get('place_id'), h['type'], h['src_id'], h['title'])
+
+        variants = h['variants']
+        title = h['title']
+
+        #  place_id, dataset, src_id, title
+        rec = HitRecord(-1, 'md', h['src_id'], title)
+
+        # list of variant@lang (excldes chosen title)
+        v_array = []
+        for v in variants:
+            if v['name'] != title:
+                v_array.append(v['name'] + '@' + v['lang'])
+        rec.variants = v_array
+
+        if 'geoms' in h.keys():
+            # single MultiPoint geometry
+            if len(h['geoms']) != 0:
+                geoms = h['geoms']
+                for geom in geoms:
+                    geom.update({
+                        'id': h['src_id'],
+                        'ds': 'md'
+                    })
+                    # single MultiPoint geom if exists
+                rec.geoms = geoms
+
+        # turn these identifier claims into links
+        qlinks = {
+            'P1566': 'gn', 'P1584': 'pl', 'P244': 'loc',
+            'P1667': 'tgn', 'P214': 'viaf', 'P268': 'bnf',
+            'P2503': 'gov', 'P1871': 'cerl', 'P227': 'gnd'
+        }
+        links = []
+        hlinks = list(
+            set(h['claims'].keys()) & set(qlinks.keys()))
+        if len(hlinks) > 0:
+            for l in hlinks:
+                links.append(qlinks[l] + ':' + str(h['claims'][l][0]))
+
+        # add en and FIRST {language} wikipedia sitelink OR first sitelink
+        # wplinks = []
+        # wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == 'en']
+        # if language != 'en':
+        #     wplinks += [l['title'] for l in h['sitelinks'] if l['lang'] == language]
+        # # TODO: non-English wp pages do not resolve well
+        #
+        # links += ['wp:' + l for l in set(wplinks)]
+        #
+        # rec.links = links
+
+        # look up Q class labels
+        # htypes = set(h['claims']['P31'])
+        # qtypekeys = set([t[0] for t in qtypes.items()])
+        # rec.types = [qtypes[t] for t in list(set(htypes & qtypekeys))]
+
+        # countries
+
+        # rec.ccodes = [
+        #     cchash[0][c]['gnlabel'] for c in cchash[0] if cchash[0][c]['wdid'] in h['claims'].get('P17', [])
+        # ]
+        #
+        # # include en + native lang if not en
+        # rec.descriptions = wdDescriptions(h['descriptions'], language) if 'descriptions' in h.keys() else []
+        #
+        # # not applicable
+        # rec.parents = []
+        #
+        # # no minmax in hit if no inception value(s)
+        # rec.minmax = [h['minmax']['gte'], h['minmax']['lte']] if 'minmax' in h else []
 
 
     elif auth == 'tgn':
@@ -686,6 +754,7 @@ def align_match_data(pk, *args, **kwargs):
     start = datetime.datetime.now()
     dataset = get_object_or_404(Dataset, id=pk)
     dataset_2 = get_object_or_404(Dataset, id=kwargs.get('dataset_2'))
+    language = kwargs['lang']
 
     csv_data = pd.read_csv(kwargs.get('csv_url'))
 
@@ -705,7 +774,10 @@ def align_match_data(pk, *args, **kwargs):
                 "src_id": place_2.src_id,
                 "type": "match_data",
                 "title": place_2.title,
-                "geom": None
+                "fclasses": place_2.fclasses or [],
+                "geoms": [],
+                "variants": [],
+                "claims": {},
                 }
         [variants, geoms, types, ccodes, parents] = [[], [], [], [], []]
 
@@ -717,9 +789,12 @@ def align_match_data(pk, *args, **kwargs):
             types.append(t.jsonb['identifier'])
         qobj['placetypes'] = types
 
-        for name in place_2.names.all():
-            variants.append(name.toponym)
-        qobj['variants'] = variants
+        variants.append(place.title)
+        for name in place.names.all():
+            qobj['variants'].append({
+                'name': name.toponym,
+                'lang': language
+            })
 
         if len(place_2.related.all()) > 0:
             for rel in place_2.related.all():
@@ -732,7 +807,15 @@ def align_match_data(pk, *args, **kwargs):
         if len(place_2.geoms.all()) > 0:
             geoms = [g.jsonb for g in place_2.geoms.all()]
             # make everything a simple polygon hull for spatial filter
-            qobj['geom'] = hully(geoms)
+            for geom in geoms:
+                geom['coordinates'] = [geom['coordinates']]
+            qobj['geoms'] = geoms
+
+        if len(place_2.links.all()) > 0:
+            l_list = [l.jsonb['identifier'] for l in place_2.links.all()]
+            qobj['authids'] = l_list
+        else:
+            qobj['authids'] = []
 
         Hit.objects.create(
             authority='md',
@@ -741,10 +824,10 @@ def align_match_data(pk, *args, **kwargs):
             place=place,
             task_id=align_match_data.request.id,
             query_pass='pass1',
-            json=qobj,
+            json=normalize(qobj, qobj['type'], language),
             src_id=place.src_id,
             score=data[4],
-            geom=qobj['geom'],
+            geom=None,
             reviewed=False,
             matched=False,
         )
