@@ -34,6 +34,7 @@ class Place(models.Model):
     review_wd = models.IntegerField(null=True, choices=STATUS_REVIEW)
     review_tgn = models.IntegerField(null=True, choices=STATUS_REVIEW)
     review_whg = models.IntegerField(null=True, choices=STATUS_REVIEW)
+    review_md = models.IntegerField(null=True, choices=STATUS_REVIEW)
 
     def __str__(self):
         return '%s:%s' % (self.id, self.title)

@@ -9,5 +9,5 @@ register = template.Library()
 
 @register.filter(name='get')
 def get(d, k):
-    jd = json.loads(d)
+    jd = json.loads(d) or {}
     return jd.get(k, None)

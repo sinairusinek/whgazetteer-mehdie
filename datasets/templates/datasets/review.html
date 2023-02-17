@@ -223,11 +223,11 @@
                 <!-- push geometries to js -->
                 {% if form.json.value|get:"geoms"|length > 0 %}
                   {% for g in form.json.value|get:"geoms" %}
-                    {{ g|safe|json_script:g.id }}
+{#                    {{ g|safe|json_script:g.id }}#}
                   {% endfor %}
                 {% endif %}
                 <!-- {{ form.json.value }} -->
-                <p><strong>Title/Preferred</strong>: <span class="text-danger h6">{{ form.json.value|get:"title" }}</p>
+                  <p><strong>Title/Preferred</strong>: <span class="text-danger h6">{{ form.json.value|get:"title" }}</span></p>
                 {% if authority|startswith:'whg' %}
                   <p><strong>WHG place id</strong>: {{ form.json.value|get:"place_id" }}</p>
                   <p><strong>Source (id)</strong>: {{ form.json.value|get:"dataset" }} ({{ form.json.value|get:"src_id" }})</p>
@@ -237,7 +237,7 @@
                   {% else %}
                   <p><strong>{{ authority|upper }} ID</strong>:
                   {% endif %}
-                  <a href="" data-auth={{authority}} class="mr-2 ext-recon" >{{ form.authrecord_id.value }}</a>{% fontawesome_icon 'external-link' color='#336699' %}
+                  <a href="" data-auth={{authority}} class="mr-2">{{ form.authrecord_id.value }}</a>{% fontawesome_icon 'external-link' color='#336699' %}
                   </p>
                 {% endif %}
 
@@ -479,7 +479,7 @@
       // return this.id.match(/[0-9]/) && this.text != '"null"';-->
       return this.id !='' && this.text != '"null"';
     });
-    <!--console.log(gelems)-->
+    console.log(gelems)
     for (i=0;i<gelems.length;i++){
       let t_geom = cleanJson(gelems[i].text)
       t_geom['properties'] = {"id": gelems[i].id,"ds": t_geom.ds!=null?t_geom.ds:ds}
@@ -492,7 +492,7 @@
 
     function fill(ds) {
       <!--console.log('ds',ds)-->
-      if (['tgn','wd','whg'].indexOf(ds)>=0){
+      if (['tgn','wd','whg', 'md'].indexOf(ds)>=0){
         return "orange"}
       else {
         return "green"}
