@@ -33,7 +33,7 @@ URI for the source of the title
 
 **matches**
 
-One or more URIs for matching record(s) in place name authority resources; interpreted as [SKOS:closeMatch](https://www.w3.org/TR/2009/REC-skos-reference-20090818/#L4858), which is "used to link two concepts that are sufficiently similar that they can be used interchangeably in some information retrieval applications" and is inclusive its sub-property SKOS:exactMatch. _semicolon-delimited_
+One or more URIs for matching record(s) in person  authority resources; interpreted as [SKOS:closeMatch](https://www.w3.org/TR/2009/REC-skos-reference-20090818/#L4858), which is "used to link two concepts that are sufficiently similar that they can be used interchangeably in some information retrieval applications" and is inclusive its sub-property SKOS:exactMatch. _semicolon-delimited_
 
 **variants**
 
@@ -57,8 +57,7 @@ A short text description of the person that will assist in linking and disambigu
 
 ### _## future ##_
 
-**associated_places**
-
+**other associated_places**
 **relation to people**
-
-Either 1) a URI for a web-published record of the parent_name above, or 2) a pointer to another record in the same datafile, consisting of a '#' character followed by the **id** of the parent record; e.g. "#1234"
+**fields to document assertion authority and certainty**
+**fileds to record references**
