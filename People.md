@@ -53,6 +53,17 @@ Earliest relevant date in ISO 8601 form (YYYY-MM-DD); omit month and/or year as 
 Earliest relevant date in ISO 8601 form (YYYY-MM-DD); omit month and/or year as req. BCE years must expressed as negative integer, e.g. -0320 for 320 BCE. To express a range, use a pair of dates, e.g. -0299/-0200 would indicate "died in 3rd century BCE."
 
 **active_date**		
+currently not functional, just there to keep information. 
+
+**birth_place**
+String
+**birth_place_matches**
+
+**death_place**
+**death_place_matches**
+**associated_place**
+currently not functional, just there to keep information. 
+
 
 **description**
 
@@ -62,6 +73,7 @@ A short text description of the person that will assist in linking and disambigu
 ### _## future ##_
 
 **other associated_places**
+This might be better suited in Json/XML/relational structure than in one flat file. We should find a way to describe places of visit - from a waypoint in a journey, through places X corresponded from, to long residence, as well as places related to roles (x was Jewish Religious leader at Y).
 **relation to people**
 **fields to document assertion authority and certainty**
-**fileds to record references**
+**fields to record references**
