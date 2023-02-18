@@ -43,12 +43,16 @@ One or more name and/or language variants; can be suffixed with language-script 
 
 We distinguish between individual names (1), collective names (2) and family names (3). Further thought is required on additional types, e.g. deities, fiction, nameless definite descriptions (e.g. "The Sultan of x in year 1000") 
 
-**birth_date**		
+**gender**
+female, male, discuss other options
 
+**birth_date**		
 Earliest relevant date in ISO 8601 form (YYYY-MM-DD); omit month and/or year as req. BCE years must expressed as negative integer, e.g. -0320 for 320 BCE. To express a range, use a pair of dates, e.g. -0299/-0200 would indicate "born in 3rd century BCE."
 
 **death_date**		
 Earliest relevant date in ISO 8601 form (YYYY-MM-DD); omit month and/or year as req. BCE years must expressed as negative integer, e.g. -0320 for 320 BCE. To express a range, use a pair of dates, e.g. -0299/-0200 would indicate "died in 3rd century BCE."
+
+**active_date**		
 
 **description**
 
